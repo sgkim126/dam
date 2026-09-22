@@ -138,7 +138,13 @@ class DamLauncherTests(unittest.TestCase):
             ("unused-workspace", "unknown-action"),
             ("unused-workspace", "exec"),
             ("unused-workspace", "shell", "extra"),
-            ("unused-workspace", "tmux", "extra"),
+            ("unused-workspace", "tmux"),
+            ("unused-workspace", "tmux", "first", "second"),
+            ("unused-workspace", "tmux", ""),
+            ("unused-workspace", "tmux", "review.notes"),
+            ("unused-workspace", "tmux", "review:notes"),
+            ("unused-workspace", "tmux", "review\nnotes"),
+            ("unused-workspace", "tmux", "review\rnotes"),
             ("unused-workspace", "sync", "extra"),
             ("unused-workspace", "config", "extra"),
             ("unused-workspace", "stop", "extra"),
@@ -146,7 +152,7 @@ class DamLauncherTests(unittest.TestCase):
         ):
             with self.subTest(args=args):
                 result = self.run_dam(*args)
-                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.returncode, 2)
                 self.assertTrue(result.stderr)
                 self.assertEqual(self.events, [])
                 self.assertFalse((self.workspaces_root / "unused-workspace").exists())
@@ -265,12 +271,30 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual([self.command(event)[0] for event in self.docker_calls], ["build"])
 
     def test_tmux_attaches_to_existing_named_session(self):
-        result = self.run_dam("ws2", "tmux")
+        result = self.run_dam("ws2", "tmux", "coding")
         self.assert_success(result)
         self.assert_selected_workspace(self.workspaces_root / "ws2")
         self.assertEqual(self.command(self.docker_calls[-1]), [
-            "exec", "dev", "tmux", "new-session", "-A", "-s", "dam",
+            "exec", "dev", "tmux", "new-session", "-A", "-s", "coding",
         ])
+
+    def test_named_tmux_sessions_share_workspace_and_preserve_arguments(self):
+        workspace = self.workspaces_root / "personal"
+        workspace.mkdir(parents=True)
+        projects = set()
+        for session in (
+            "first",
+            "second",
+            "review notes; $(printf injected) `printf injected` * [a]",
+        ):
+            with self.subTest(session=session):
+                result = self.run_dam("personal", "tmux", session)
+                self.assert_success(result)
+                projects.add(self.assert_selected_workspace(workspace))
+                self.assertEqual(self.command(self.docker_calls[-1]), [
+                    "exec", "dev", "tmux", "new-session", "-A", "-s", session,
+                ])
+        self.assertEqual(len(projects), 1)
 
     def test_exec_preserves_command_arguments(self):
         result = self.run_dam("ws2", "exec", "printf", "%s", "argument with spaces", "$literal")

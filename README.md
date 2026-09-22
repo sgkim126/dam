@@ -11,7 +11,7 @@ Apple Silicon(arm64)과 Intel/AMD(amd64)를 지원합니다.
 ```bash
 docker info
 ./dam {workspace} build
-./dam {workspace} tmux
+./dam {workspace} tmux {session}
 ```
 
 빌드 플랫폼을 지정하려면 사용할 아키텍처에 맞춰 다음 중 하나를 실행합니다.
@@ -26,16 +26,32 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 ./dam workspace-amd build
 
 첫 인자는 워크스페이스 이름입니다.
 `./dam ws1`는 `dam/workspaces/ws1`를 사용하는 컨테이너의 일반 셸로 들어갑니다.
-`./dam ws1 tmux`는 워크스페이스 이름과 같은 `ws1` tmux 세션을 만들거나 다시 연결합니다.
+
+`./dam ws1 tmux coding`은 `coding` tmux 세션을 만들거나 다시 연결합니다.
+`./dam WORKSPACE tmux SESSION`의 세션 이름은 필수입니다.
+이름을 생략하면 워크스페이스 생성이나 설정 동기화, 컨테이너 시작 없이 오류로 종료합니다.
+
 `build`는 이미지를 빌드한 뒤 해당 워크스페이스의 컨테이너를 백그라운드에서 실행합니다.
-tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux`로 연결할 수 있습니다.
+
+tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연결할 수 있습니다.
 컨테이너가 재시작되면 tmux 프로세스/세션은 종료되지만 파일과 인증 정보는 유지됩니다.
+
+같은 워크스페이스에 여러 세션을 만들려면 각각 다른 이름을 지정합니다.
+같은 이름으로 실행하면 기존 세션에 다시 연결하며, 모든 세션은 같은 컨테이너와 워크스페이스, 홈, CLI 계정을 사용합니다.
+
+```bash
+./dam ws1 tmux coding         # coding 세션 생성 또는 연결
+./dam ws1 tmux review         # review 세션 생성 또는 연결
+```
+
+지정하는 세션 이름은 비어 있거나 `.`, `:`, 줄바꿈을 포함할 수 없습니다.
+공백이 있는 이름은 `./dam ws1 tmux "code review"`처럼 따옴표로 감쌉니다.
 
 ## 여러 워크스페이스
 
 ```bash
 ./dam ws1 build               # dam/workspaces/ws1를 /workspace로 연결하고 빌드
-./dam ws1 tmux                # ws1 컨테이너의 tmux에 연결
+./dam ws1 tmux coding         # ws1 컨테이너의 coding 세션에 연결
 ./dam ws2 build               # dam/workspaces/ws2용 별도 컨테이너와 홈 볼륨 생성
 ./dam "project with spaces"   # 이름에 공백이 있으면 따옴표 사용
 ```
@@ -95,7 +111,7 @@ nvim .
 ```
 
 `/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `dam/workspaces/ws1`)와 연결됩니다.
-저장소마다 Codex를 실행하면 되고, 여러 저장소를 동시에 작업할 때는 tmux 창을 나누면 됩니다.
+저장소마다 Codex를 실행하면 되고, 여러 저장소를 동시에 작업할 때는 tmux 창을 나누거나 이름이 다른 세션을 사용하면 됩니다.
 같은 컨테이너의 모든 저장소는 같은 홈과 CLI 계정을 사용합니다.
 
 ## 공유와 분리
@@ -115,7 +131,7 @@ nvim .
 | Git 설정/SSH 키/도구 캐시 | -- | `/home/node` | 컨테이너 볼륨에 보관 |
 
 공유는 **호스트 -> 컨테이너 단방향**입니다.
-`./dam WORKSPACE`, `./dam WORKSPACE tmux`, `./dam WORKSPACE exec`, `./dam WORKSPACE sync`를 실행할 때 갱신합니다.
+`./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE sync`를 실행할 때 갱신합니다.
 컨테이너에서 수정한 공유 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집하세요.
 실행 중인 tmux에는 `tmux source-file ~/.tmux.conf`로 반영하고, 실행중인 Codex/Neovim은 다시 실행할 때 반영됩니다.
 
@@ -146,7 +162,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ./dam ws1 build                  # 이미지 다시 빌드하고 컨테이너 실행
 ./dam ws1 build --no-cache       # 캐시 없이 다시 빌드해 Codex 최신 버전 설치 후 컨테이너 실행
 ./dam ws1                        # ws1 컨테이너 셸 접속
-./dam ws2 tmux                   # 별도 ws2 컨테이너의 tmux에 연결
+./dam ws2 tmux coding            # 별도 ws2 컨테이너의 coding 세션에 연결
 ```
 
 명령은 선택한 워크스페이스의 Compose 프로젝트에만 적용됩니다.
@@ -157,7 +173,7 @@ Node.js는 24 계열이며 Neovim/gh/OS 패키지는 빌드 시 공식 APT 저�
 
 ## 테스트
 
-워크스페이스 이름 검증, 프로젝트 분리, build 실행 순서와 실패 처리는 임시 디렉토리와 Docker 명령 대역을 사용하는 테스트로 확인합니다.
+워크스페이스 이름 검증, 프로젝트 분리, build 실행 순서와 실패 처리, tmux 세션 이름 전달, 검증은 임시 디렉토리와 Docker 명령 대역을 사용하는 테스트로 확인합니다.
 
 ```bash
 python3 -m unittest discover -s tests -v
