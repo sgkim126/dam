@@ -1,0 +1,6 @@
+.host-settings/
+.env
+__pycache__/
+*.pyc
+
+/workspaces/

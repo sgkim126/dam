@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+dam_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$dam_root"
+compose=(docker compose --project-directory "$dam_root" -f "$dam_root/compose.yaml")
+
+prepare() {
+  python3 "$dam_root/docker/prepare-settings.py"
+  mkdir -p "$dam_root/workspaces"
+}
+
+start() {
+  prepare
+  "${compose[@]}" up -d --wait
+  "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
+}
+
+action="${1:-shell}"
+if [[ $# -gt 0 ]]; then shift; fi
+case "$action" in
+  shell)
+    start
+    exec "${compose[@]}" exec dev bash -l
+    ;;
+  tmux)
+    start
+    exec "${compose[@]}" exec dev tmux new-session -A -s dam
+    ;;
+  exec)
+    if [[ $# -eq 0 ]]; then echo 'Usage: ./dam exec COMMAND [ARGS...]' >&2; exit 2; fi
+    start
+    if [[ -t 0 && -t 1 ]]; then
+      exec "${compose[@]}" exec dev "$@"
+    else
+      exec "${compose[@]}" exec -T dev "$@"
+    fi
+    ;;
+  sync)
+    prepare
+    if [[ -n "$("${compose[@]}" ps --status running -q dev)" ]]; then
+      "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
+    fi
+    ;;
+  build)
+    prepare
+    exec "${compose[@]}" build --pull "$@"
+    ;;
+  config)
+    prepare
+    "${compose[@]}" config --quiet
+    echo 'Compose configuration is valid.'
+    ;;
+  stop|down|ps|logs)
+    exec "${compose[@]}" "$action" "$@"
+    ;;
+  *)
+    echo 'Usage: ./dam [shell|tmux|exec COMMAND...|sync|build|config|stop|down|ps|logs]' >&2
+    exit 2
+    ;;
+esac

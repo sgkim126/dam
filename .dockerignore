@@ -1,0 +1,6 @@
+**
+!Dockerfile
+!docker/
+!docker/import-settings.py
+!docker/prepare-settings.py
+!docker/entrypoint.sh
