@@ -2,22 +2,92 @@
 set -euo pipefail
 
 dam_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./dam WORKSPACE [shell|tmux|exec COMMAND...|sync|build|config|stop|down|ps|logs]
+
+WORKSPACE is a directory name under workspaces/ next to this script.
+The default action is shell. build builds the image and starts the container.
+
+Examples:
+  ./dam a build
+  ./dam a tmux
+  ./dam b tmux
+  ./dam b exec git status
+USAGE
+}
+
+if [[ $# -eq 0 || -z "$1" ]]; then usage >&2; exit 2; fi
+if [[ "$1" == -h || "$1" == --help ]]; then usage; exit 0; fi
+dam_workspace_arg="$1"
+shift
+action="${1:-shell}"
+if [[ $# -gt 0 ]]; then shift; fi
+
+# Validate before creating directories, copying settings, or calling Docker.
+case "$action" in
+  shell|tmux|sync|config)
+    if [[ $# -gt 0 ]]; then usage >&2; exit 2; fi
+    ;;
+  exec)
+    if [[ $# -eq 0 ]]; then usage >&2; exit 2; fi
+    ;;
+  build|stop|down|ps|logs)
+    if [[ $# -gt 0 && "$1" != -* ]]; then usage >&2; exit 2; fi
+    ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+# Resolve the workspace path and derive its Docker Compose project name.
+dam_identity="$(python3 - "$dam_workspace_arg" "$dam_root" <<'PY'
+import hashlib
+from pathlib import Path
+import re
+import sys
+
+try:
+    name = sys.argv[1]
+    if name in (".", "..") or "/" in name or "\\" in name:
+        raise ValueError("workspace must be a directory name, not a path")
+    workspace = (Path(sys.argv[2]) / "workspaces").resolve() / name
+    if any(character in str(workspace) for character in ("\n", "\r")):
+        raise ValueError("workspace paths cannot contain line breaks")
+    if workspace.is_symlink():
+        raise ValueError("workspace must be a directory, not a symbolic link")
+    if workspace.exists() and not workspace.is_dir():
+        raise ValueError("workspace must be a directory")
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:32].rstrip("-")
+    digest = hashlib.sha256(str(workspace).encode()).hexdigest()[:12]
+    project = f"dam-{slug or 'workspace'}-{digest}"
+except (OSError, RuntimeError, ValueError) as error:
+    print(f"Invalid workspace: {error}", file=sys.stderr)
+    sys.exit(2)
+
+print(project)
+print(workspace)
+PY
+)"
+dam_project="${dam_identity%%$'\n'*}"
+export DAM_WORKSPACE_PATH="${dam_identity#*$'\n'}"
 cd "$dam_root"
-compose=(docker compose --project-directory "$dam_root" -f "$dam_root/compose.yaml")
+compose=(docker compose --project-name "$dam_project" --project-directory "$dam_root" -f "$dam_root/compose.yaml")
 
 prepare() {
+  mkdir -p -- "$DAM_WORKSPACE_PATH"
   python3 "$dam_root/docker/prepare-settings.py"
-  mkdir -p "$dam_root/workspaces"
+}
+
+up() {
+  "${compose[@]}" up -d --wait dev
+  "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
 }
 
 start() {
   prepare
-  "${compose[@]}" up -d --wait
-  "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
+  up
 }
 
-action="${1:-shell}"
-if [[ $# -gt 0 ]]; then shift; fi
 case "$action" in
   shell)
     start
@@ -28,7 +98,6 @@ case "$action" in
     exec "${compose[@]}" exec dev tmux new-session -A -s dam
     ;;
   exec)
-    if [[ $# -eq 0 ]]; then echo 'Usage: ./dam exec COMMAND [ARGS...]' >&2; exit 2; fi
     start
     if [[ -t 0 && -t 1 ]]; then
       exec "${compose[@]}" exec dev "$@"
@@ -38,24 +107,23 @@ case "$action" in
     ;;
   sync)
     prepare
-    if [[ -n "$("${compose[@]}" ps --status running -q dev)" ]]; then
+    dam_running="$("${compose[@]}" ps --status running -q dev)"
+    if [[ -n "$dam_running" ]]; then
       "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
     fi
     ;;
   build)
     prepare
-    exec "${compose[@]}" build --pull "$@"
+    "${compose[@]}" build --pull "$@"
+    up
     ;;
   config)
     prepare
     "${compose[@]}" config --quiet
-    echo 'Compose configuration is valid.'
+    printf 'Workspace: %s\nProject: %s\nHome volume: %s_dev-home\nCompose configuration is valid.\n' \
+      "$DAM_WORKSPACE_PATH" "$dam_project" "$dam_project"
     ;;
   stop|down|ps|logs)
     exec "${compose[@]}" "$action" "$@"
-    ;;
-  *)
-    echo 'Usage: ./dam [shell|tmux|exec COMMAND...|sync|build|config|stop|down|ps|logs]' >&2
-    exit 2
     ;;
 esac
