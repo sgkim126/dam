@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import tomllib
 
@@ -197,6 +198,38 @@ def mirror_editor_settings(source: Path, home: Path) -> None:
     atomic_write(manifest, (json.dumps(sorted(files), indent=2) + "\n").encode())
 
 
+def initialize_shell(home: Path) -> None:
+    """Keep personal shell settings and make new accounts usable immediately."""
+    bashrc = home / ".bashrc"
+    if bashrc.is_symlink():
+        raise ValueError(f"Refusing to write shell settings through symlink: {bashrc}")
+    if bashrc.exists():
+        content = bashrc.read_text()
+        mode = stat.S_IMODE(bashrc.stat().st_mode)
+    else:
+        skeleton = Path("/etc/skel/.bashrc")
+        content = skeleton.read_text() if skeleton.is_file() and not skeleton.is_symlink() else ""
+        mode = 0o644
+    environment = "if [ -f /etc/profile.d/dam.sh ]; then . /etc/profile.d/dam.sh; fi"
+    # Put the environment before the usual skeleton's non-interactive return.
+    if environment not in content.splitlines():
+        content = environment + "\n" + content
+    for line in (
+        "alias vi=nvim",
+        "if [ -f /workspace/.bashrc ]; then source /workspace/.bashrc; fi",
+    ):
+        if line not in content.splitlines():
+            content = content.rstrip("\n") + "\n\n" + line + "\n"
+    atomic_write(bashrc, content.encode(), mode)
+
+    login_files = [home / name for name in (".bash_profile", ".bash_login", ".profile")]
+    if not any(path.exists() or path.is_symlink() for path in login_files):
+        atomic_write(
+            home / ".profile",
+            b'if [ -n "${BASH_VERSION:-}" ] && [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n',
+        )
+
+
 def import_system_settings(source: Path, system_config: Path) -> None:
     """Write only common settings; the administrator owns the shared lock."""
     config, skipped = portable_codex_config(source / "codex/config.toml", source)
@@ -207,6 +240,7 @@ def import_system_settings(source: Path, system_config: Path) -> None:
 
 def import_user_settings(source: Path, home: Path) -> None:
     """Run as the destination user, preserving their identity and session data."""
+    initialize_shell(home)
     attach_skills(source / "codex/skills", home / ".codex/skills", home, source)
     for name in ("rules", "agents", "AGENTS.md"):
         attach(source / "codex" / name, home / ".codex" / name, home, source)

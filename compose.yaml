@@ -10,8 +10,6 @@ services:
     environment:
       TERM: xterm-256color
       COLORTERM: truecolor
-      GH_CONFIG_DIR: /home/node/.config/gh
-      GLAB_CONFIG_DIR: /home/node/.config/glab-cli
     volumes:
       - type: bind
         source: ${DAM_WORKSPACE_PATH:?Use ./dam WORKSPACE COMMAND to select a workspace}

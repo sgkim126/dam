@@ -139,6 +139,47 @@ config_file = "/Users/host/private/reviewer.toml"
             self.assertEqual(self.system_config.stat().st_mtime_ns, 1)
         self.assertNotIn(str(self.root / "home"), expected.decode())
 
+    def test_shell_initialization_preserves_settings_and_is_idempotent(self):
+        self.write(self.home / ".bashrc", "# personal settings\nreturn\n")
+        (self.home / ".bashrc").chmod(0o600)
+        self.run_import(system_only=False)
+        first = (self.home / ".bashrc").read_text()
+        self.run_import(system_only=False)
+        self.assertEqual((self.home / ".bashrc").read_text(), first)
+        self.assertEqual(first.count("alias vi=nvim"), 1)
+        self.assertEqual(first.count("source /workspace/.bashrc"), 1)
+        self.assertIn("# personal settings\nreturn\n", first)
+        self.assertTrue(first.startswith("if [ -f /etc/profile.d/dam.sh ]; then . /etc/profile.d/dam.sh; fi\n"))
+        self.assertEqual((self.home / ".bashrc").stat().st_mode & 0o777, 0o600)
+        self.assertIn('. "$HOME/.bashrc"', (self.home / ".profile").read_text())
+
+    def test_existing_login_files_are_preserved(self):
+        for name in (".bash_profile", ".bash_login", ".profile"):
+            with self.subTest(name=name):
+                home = self.root / "home" / name.removeprefix(".")
+                self.write(home / name, "# my login file\n")
+                self.run_import(home=home, system_only=False)
+                self.assertEqual((home / name).read_text(), "# my login file\n")
+                if name != ".profile":
+                    self.assertFalse((home / ".profile").exists())
+
+    def test_shell_initialization_rejects_bashrc_symlink(self):
+        target = self.root / "outside-home"
+        self.write(target, "do not change\n")
+        self.home.mkdir(parents=True)
+        (self.home / ".bashrc").symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "shell settings through symlink"):
+            self.run_import(system_only=False)
+        self.assertEqual(target.read_text(), "do not change\n")
+        self.assertTrue((self.home / ".bashrc").is_symlink())
+
+    def test_dangling_login_symlink_is_not_replaced(self):
+        self.home.mkdir(parents=True)
+        (self.home / ".profile").symlink_to(self.root / "missing-profile")
+        self.run_import(system_only=False)
+        self.assertTrue((self.home / ".profile").is_symlink())
+        self.assertFalse((self.root / "missing-profile").exists())
+
     def test_cli_modes_are_mutually_exclusive(self):
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--system-only", "--user-only"],

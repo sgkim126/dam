@@ -97,15 +97,6 @@ prepare() {
 import_settings() {
   "${compose[@]}" exec -T --user root dev python3 /usr/local/lib/dam/import-settings.py --system-only
   "${compose[@]}" exec -T --user node dev dam-user-env python3 /usr/local/lib/dam/import-settings.py --user-only
-  "${compose[@]}" exec -T --user node dev dam-user-env bash -c '
-    if ! grep -qxF "alias vi=nvim" "$HOME/.bashrc" 2>/dev/null; then
-      printf "\nalias vi=nvim\n" >> "$HOME/.bashrc"
-    fi
-    workspace_bashrc="if [ -f /workspace/.bashrc ]; then source /workspace/.bashrc; fi"
-    if ! grep -qxF "$workspace_bashrc" "$HOME/.bashrc"; then
-      printf "\n%s\n" "$workspace_bashrc" >> "$HOME/.bashrc"
-    fi
-  '
 }
 
 up() {

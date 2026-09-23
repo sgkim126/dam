@@ -39,12 +39,7 @@ COPY --chmod=644 docker/profile.sh /etc/profile.d/dam.sh
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     EDITOR=nvim \
-    VISUAL=nvim \
-    HOME=/home/node \
-    USER=node \
-    LOGNAME=node \
-    NPM_CONFIG_PREFIX=/home/node/.local \
-    PATH=/home/node/.local/bin:${PATH}
+    VISUAL=nvim
 USER root
 WORKDIR /workspace
 ENTRYPOINT ["dam-entrypoint"]
