@@ -35,6 +35,11 @@ class RegistryValidationTests(unittest.TestCase):
             with self.subTest(gid=gid), self.assertRaises(ValueError):
                 users["validate_registry"](state)
 
+    def test_invalid_user_names_are_rejected(self):
+        for name in ("root", "users", "../alice", "-bad", "Alice", "", "a" * 33):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                users["validate_name"](name)
+
 
 class RegistryDurabilityTests(unittest.TestCase):
     def setUp(self):

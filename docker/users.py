@@ -18,6 +18,7 @@ HOMES = Path("/home")
 REGISTRY_DIR = HOMES / ".dam"
 REGISTRY = REGISTRY_DIR / "users.json"
 SHARED_GROUP = "users"
+FIRST_ID = 2000
 IMPORTER = "/usr/local/lib/dam/import-settings.py"
 USER_ENV = "/usr/local/bin/dam-user-env"
 
@@ -99,6 +100,23 @@ def initial_registry() -> dict:
     }
 
 
+def reserve_user(state: dict, name: str) -> None:
+    if name in state["accounts"]:
+        return
+    users, groups = pwd.getpwall(), grp.getgrall()
+    if any(user.pw_name == name for user in users) or any(group.gr_name == name for group in groups):
+        raise ValueError(f"User or group already exists outside dam: {name}")
+    if (HOMES / name).exists() or (HOMES / name).is_symlink():
+        raise ValueError(f"Home already exists outside dam: {name}")
+    used = {user.pw_uid for user in users} | {group.gr_gid for group in groups}
+    for record in state["accounts"].values():
+        used.update(record.values())
+    identity = FIRST_ID
+    while identity in used:
+        identity += 1
+    state["accounts"][name] = {"uid": identity, "gid": identity}
+
+
 def ensure_account(name: str, record: dict) -> None:
     uid, gid = record["uid"], record["gid"]
     home = HOMES / name
@@ -132,11 +150,15 @@ def ensure_account(name: str, record: dict) -> None:
     os.chown(home, uid, gid)
 
 
-def synchronize() -> None:
+def synchronize(new_user: str | None = None) -> None:
+    if new_user is not None:
+        validate_name(new_user)
     with registry_lock():
         state = load_registry()
         if state is None:
             state = initial_registry()
+        if new_user is not None:
+            reserve_user(state, new_user)
         validate_registry(state)
         if state["shared_gid"] != grp.getgrnam(SHARED_GROUP).gr_gid:
             raise ValueError("Shared group ID differs from the registry")
@@ -150,19 +172,23 @@ def synchronize() -> None:
                 "setpriv", "--reuid", name, "--regid", str(record["gid"]), "--init-groups",
                 USER_ENV, "python3", IMPORTER, "--user-only",
             ], check=True)
-    print("Accounts and settings synchronized.")
+    if new_user is not None:
+        print(f"Account ready: {new_user}. Switch with: su - {new_user}")
+    else:
+        print("Accounts and settings synchronized.")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     commands.add_parser("sync")
+    commands.add_parser("add").add_argument("user")
     args = parser.parse_args()
     try:
         if os.geteuid() != 0:
             raise ValueError("Account administration must run as root")
         os.umask(0o077)
-        synchronize()
+        synchronize(getattr(args, "user", None))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"Account administration failed: {error}\n")
 
