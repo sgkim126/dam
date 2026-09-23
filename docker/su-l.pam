@@ -1,0 +1,4 @@
+# Apply exactly the same authentication policy to su --login.
+auth include su
+account include su
+session include su

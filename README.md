@@ -77,7 +77,34 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 홈 볼륨 이름은 `<프로젝트 이름>_dev-home`입니다.
 `./dam WORKSPACE config`로 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
 
-## 계정 로그인 — 컨테이너 안에서 한 번
+## 계정 전환
+
+컨테이너에 미리 준비한 일반 계정 중 `users` 그룹에 속하는 계정끼리는 비밀번호 없이 전환할 수 있습니다.
+기본 계정 `node`도 이 그룹에 속합니다.
+대상 계정은 UID 1000 이상이어야 하며, `root`/시스템 계정/그룹에 속하지 않은 계정으로의 전환은 거부합니다.
+
+```bash
+# alice는 이미 컨테이너에 생성하고 users 그룹에 넣은 계정
+su - alice
+cd /workspace
+tmux new-session -A -s coding
+
+# 이전 셸로 복귀
+exit
+```
+
+`su USER`와 `su - USER` 모두 사용할 수 있습니다.
+`su - USER`는 해당 사용자의 홈으로 이동합니다.
+`su USER -c COMMAND`로 직접 실행할 때도 Codex/gh/glab, npm, XDG 설정 경로와 PATH는 대상 사용자의 홈을 기준으로 초기화합니다.
+로그인 정보, Git 개인 설정과 tmux 세션은 각 Linux 계정의 홈과 UID를 사용합니다.
+런처의 `shell`, `exec`, `tmux`, `sessions`는 항상 `node`로 실행합니다.
+
+추가 계정의 생성과 홈 보존은 관리자가 준비해야 합니다.
+런처는 `node` 홈 볼륨을 유지하며 설정 동기화도 `node` 홈에 적용합니다.
+추가 계정에 공통 사용자 설정을 초기화할 때는 해당 계정으로 `dam-user-env python3 /usr/local/lib/dam/import-settings.py --user-only`를 실행합니다.
+모든 그룹 구성원은 서로 신뢰한다는 전제이며, 비밀번호 없는 계정 전환은 사용자 간 보안 경계가 아닙니다.
+
+## CLI 로그인 — 사용자마다 한 번
 
 ```bash
 # Codex: 호스트와 별도로 로그인합니다. 같은 ChatGPT 계정을 선택해도 됩니다.
@@ -145,6 +172,7 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 ## 공유와 분리
 
 아래 홈 경로는 기본 `node` 계정 기준입니다.
+다른 계정으로 전환하면 해당 사용자의 홈을 사용합니다.
 
 | 항목 | 호스트 경로 | 컨테이너 경로 | 동작 |
 | --- | --- | --- | --- |
@@ -183,7 +211,8 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
 런처의 셸과 명령도 항상 `node`로 실행합니다.
 파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.
-`no-new-privileges`를 유지하고 호스트 네트워크는 사용하지 않습니다.
+`su`의 계정 전환을 위해 `no-new-privileges`를 설정하지 않습니다.
+호스트 네트워크는 사용하지 않습니다.
 `/workspace`에 연결된 호스트 작업 공간의 파일은 컨테이너에서 수정/삭제할 수 있습니다.
 
 ## 관리
