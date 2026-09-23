@@ -24,7 +24,7 @@ services:
           create_host_path: false
       - type: volume
         source: dev-home
-        target: /home/node
+        target: /home
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/dam-ready"]
       interval: 2s

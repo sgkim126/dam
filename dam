@@ -95,8 +95,7 @@ prepare() {
 }
 
 import_settings() {
-  "${compose[@]}" exec -T --user root dev python3 /usr/local/lib/dam/import-settings.py --system-only
-  "${compose[@]}" exec -T --user node dev dam-user-env python3 /usr/local/lib/dam/import-settings.py --user-only
+  "${compose[@]}" exec -T --user root dev python3 /usr/local/lib/dam/users.py sync
 }
 
 up() {

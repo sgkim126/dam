@@ -29,12 +29,11 @@ RUN npm install -g @openai/codex \
     && passwd -l root \
     && passwd -l node \
     && groupadd --system --force users \
-    && usermod --append --groups users node \
     && git config --system core.sharedRepository group \
     && git config --system --add safe.directory /workspace \
     && git config --system --add safe.directory '/workspace/*'
 
-COPY docker/import-settings.py docker/prepare-settings.py docker/workspace.py /usr/local/lib/dam/
+COPY docker/import-settings.py docker/prepare-settings.py docker/users.py docker/workspace.py /usr/local/lib/dam/
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/dam-entrypoint
 COPY --chmod=755 docker/user-env.sh /usr/local/bin/dam-user-env
 COPY --chmod=644 docker/profile.sh /etc/profile.d/dam.sh

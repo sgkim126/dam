@@ -74,17 +74,23 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 워크스페이스마다 홈 볼륨, Codex 기록, gh/glab 로그인과 tmux 세션이 구분되므로 처음 사용할 때 해당 컨테이너에서 로그인합니다.
 호스트에서 가져오는 공통 설정은 동일합니다.
 
-홈 볼륨 이름은 `<프로젝트 이름>_dev-home`입니다.
+홈 볼륨 이름은 `<프로젝트 이름>_dev-home`이며 `/home`에 연결합니다.
+이 볼륨에 기본 계정(`node`)을 포함한 모든 사용자의 홈과 계정 등록 정보를 보관합니다.
 `./dam WORKSPACE config`로 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
 
-## 계정 전환
+## 계정 복원과 전환
+
+사용자 등록 정보는 워크스페이스별로 보관합니다.
+컨테이너 시작 시 계정 관리 도구가 등록된 계정과 UID/GID를 복원하고, 홈과 공통 설정을 초기화합니다.
+기본 계정 `node`는 자동으로 등록됩니다.
+추가 계정은 `/home/.dam/users.json`에 미리 등록한 정보로 복원하며, 시스템에 따로 생성한 계정은 자동으로 등록하지 않습니다.
 
 컨테이너에 미리 준비한 일반 계정 중 `users` 그룹에 속하는 계정끼리는 비밀번호 없이 전환할 수 있습니다.
-기본 계정 `node`도 이 그룹에 속합니다.
+`node`와 추가한 사용자는 이 그룹에 자동으로 들어갑니다.
 대상 계정은 UID 1000 이상이어야 하며, `root`/시스템 계정/그룹에 속하지 않은 계정으로의 전환은 거부합니다.
 
 ```bash
-# alice는 이미 컨테이너에 생성하고 users 그룹에 넣은 계정
+# alice는 users.json에 미리 등록한 사용자
 su - alice
 cd /workspace
 tmux new-session -A -s coding
@@ -98,11 +104,15 @@ exit
 `su USER -c COMMAND`로 직접 실행할 때도 Codex/gh/glab, npm, XDG 설정 경로와 PATH는 대상 사용자의 홈을 기준으로 초기화합니다.
 로그인 정보, Git 개인 설정과 tmux 세션은 각 Linux 계정의 홈과 UID를 사용합니다.
 런처의 `shell`, `exec`, `tmux`, `sessions`는 항상 `node`로 실행합니다.
+다른 사용자의 tmux 세션은 전환한 셸에서 직접 생성하거나 조회합니다.
 
-추가 계정의 생성과 홈 보존은 관리자가 준비해야 합니다.
-런처는 `node` 홈 볼륨을 유지하며 설정 동기화도 `node` 홈에 적용합니다.
-추가 계정에 공통 사용자 설정을 초기화할 때는 해당 계정으로 `dam-user-env python3 /usr/local/lib/dam/import-settings.py --user-only`를 실행합니다.
+`node`를 포함한 모든 사용자의 홈은 `/home/USER`에 보관하며, 계정 등록 파일은 `/home/.dam/users.json`입니다.
+UID/GID와 홈은 컨테이너를 재생성해도 유지됩니다.
+등록 정보 형식이나 공유 그룹 GID가 호환되지 않으면 자동 변환 없이 오류로 중단합니다.
+새 계정으로 전환한 뒤 필요한 CLI에 각각 로그인하세요.
 모든 그룹 구성원은 서로 신뢰한다는 전제이며, 비밀번호 없는 계정 전환은 사용자 간 보안 경계가 아닙니다.
+
+`/workspace`에는 개인 폴더를 나누지 않으며, 모든 등록 사용자는 `users` 그룹에 속합니다.
 
 ## CLI 로그인 — 사용자마다 한 번
 
@@ -153,7 +163,7 @@ nvim .
 컨테이너 시작 시 `/workspace` 디렉토리 자체에만 공용 `users` 그룹, 그룹 읽기/쓰기/실행 권한과 setgid를 적용합니다.
 `umask 0002`와 디렉토리의 그룹 상속으로 일반적인 방식으로 만든 새 파일과 하위 디렉토리를 공유합니다.
 기존 파일과 하위 디렉토리의 소유권·권한은 변경하지 않으며, 애플리케이션이 `0600`처럼 명시적으로 제한한 파일은 자동으로 공유하지 않습니다.
-`sync`는 설정만 동기화하며 작업 공간 권한을 변경하지 않습니다.
+`sync`는 계정과 설정을 동기화하며 작업 공간 권한을 변경하지 않습니다.
 기본 계정 `node`는 `users` 그룹에 속합니다.
 `/workspace`에서 GID 변경, Unix 권한, setgid 상속을 지원하는 파일시스템만 지원합니다.
 권한 변경 요청이 오류를 반환하면 시작을 중단합니다. 변경 요청을 성공으로 처리하면서 실제로 적용하지 않는 파일시스템은 지원하지 않으며, 별도로 감지하지 않습니다.
@@ -190,7 +200,7 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 | Git 설정/SSH 키/도구 캐시 | -- | `/home/node` | 컨테이너 볼륨에 보관 |
 
 공통 설정 동기화는 **호스트 -> 컨테이너 단방향**입니다.
-`./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE sync`를 실행할 때 갱신합니다.
+`./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
 컨테이너에서 수정한 공통 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집해야 합니다.
 컨테이너에서만 적용하고 싶은 설정은 `/workspace/.bashrc`에 설정하세요.
 이 파일은 동기화되지 않습니다.
@@ -208,7 +218,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 호스트의 Codex `auth.json`, 대화 기록, gh/glab 설정, `.gitconfig`, `.ssh`, SSH agent, Docker 소켓은 연결하지 않습니다.
 호스트의 인증 토큰 환경변수도 전달하지 않습니다.
 공유 설정은 `.host-settings/`에 생성되며 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
-컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
+컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한과 계정을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
 런처의 셸과 명령도 항상 `node`로 실행합니다.
 파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.
 `su`의 계정 전환을 위해 `no-new-privileges`를 설정하지 않습니다.
@@ -238,14 +248,22 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 컨테이너가 실행 중이 아니면 세션을 조회할 수 없다는 안내를 출력하고, 실행 중이면 `tmux list-sessions` 결과를 출력합니다.
 실행 중인 컨테이너에 tmux 서버가 없으면 tmux의 기본 오류 메시지와 종료 상태를 반환합니다.
 인증 정보와 기록은 해당 프로젝트의 홈 볼륨에 남습니다.
-`./dam WORKSPACE down -v`는 그 홈 볼륨까지 삭제하므로 초기화할 때만 사용하세요.
+`./dam WORKSPACE down -v`는 홈 볼륨과 모든 사용자 등록 정보까지 삭제하므로 초기화할 때만 사용하세요.
 
 Node.js는 24 계열이며 Neovim/gh/OS 패키지는 빌드 시 공식 APT 저장소에서 설치합니다.
 
 ## 테스트
 
-워크스페이스 이름 검증, 프로젝트 분리, build 실행 순서와 실패 처리, tmux 세션 이름 전달, 검증, 세션 목록 조회, 공통 설정과 사용자 설정의 분리, 인증 정보 보존과 셸 초기화는 임시 디렉토리와 Docker 명령 대역을 사용하는 테스트로 확인합니다.
+단위 테스트는 워크스페이스 이름과 등록 정보 검증, 런처 실행 순서와 오류 전달, 설정 동기화와 기존 파일 보존을 확인합니다.
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+미리 작성한 등록 정보의 계정 복원과 컨테이너 재생성 후 UID/GID 및 홈 보존은 별도 임시 컨테이너와 볼륨으로 검증합니다.
+기존 작업 컨테이너와 데이터는 사용하지 않습니다.
+
+```bash
+docker build -t dam-users-test .
+DAM_INTEGRATION_IMAGE=dam-users-test python3 -m unittest discover -s tests -p test_container.py -v
 ```
