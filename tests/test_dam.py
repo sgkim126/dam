@@ -141,6 +141,16 @@ class DamLauncherTests(unittest.TestCase):
             ("", "tmux"),
             ("unused-workspace", "unknown-action"),
             ("unused-workspace", "exec"),
+            ("unused-workspace", "user", "add"),
+            ("unused-workspace", "user", "delete", "alice"),
+            ("unused-workspace", "user", "add", "alice", "extra"),
+            ("unused-workspace", "user", "add", ""),
+            ("unused-workspace", "user", "add", "root"),
+            ("unused-workspace", "user", "add", "users"),
+            ("unused-workspace", "user", "add", "Alice"),
+            ("unused-workspace", "user", "add", "0alice"),
+            ("unused-workspace", "user", "add", "a" * 33),
+            ("unused-workspace", "user", "add", "alice/bob"),
             ("unused-workspace", "shell", "extra"),
             ("unused-workspace", "tmux"),
             ("unused-workspace", "tmux", "first", "second"),
@@ -397,6 +407,35 @@ class DamLauncherTests(unittest.TestCase):
                     self.assertEqual(self.command(self.docker_calls[-1]), [
                         "exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/users.py", "sync",
                     ])
+
+    def test_user_add_starts_stopped_workspace_and_initializes_account(self):
+        result = self.run_dam("ws2", "user", "add", "alice")
+        self.assert_success(result)
+        self.assert_selected_workspace(self.workspaces_root / "ws2")
+        self.assertEqual(self.events[0]["kind"], "prepare")
+        self.assertEqual([self.command(event) for event in self.docker_calls], [
+            ["ps", "--status", "running", "-q", "dev"],
+            ["up", "-d", "--wait", "dev"],
+            ["exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/users.py", "add", "alice"],
+        ])
+
+    def test_user_add_keeps_running_container_and_passes_name_as_one_argument(self):
+        for name in ("_build-2", "a" * 32):
+            with self.subTest(name=name):
+                result = self.run_dam("ws2", "user", "add", name, extra_env={"DAM_TEST_RUNNING": "1"})
+                self.assert_success(result)
+                commands = [self.command(event) for event in self.docker_calls]
+                self.assertEqual([command[0] for command in commands], ["ps", "exec"])
+                self.assertEqual(commands[-1], [
+                    "exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/users.py", "add", name,
+                ])
+
+    def test_user_add_propagates_inspection_start_and_creation_failures(self):
+        for action, expected in (("ps", ["ps"]), ("up", ["ps", "up"]), ("exec", ["ps", "up", "exec"])):
+            with self.subTest(action=action):
+                result = self.run_dam("ws2", "user", "add", "alice", extra_env={"DAM_TEST_FAIL_ACTION": action})
+                self.assertEqual(result.returncode, 19)
+                self.assertEqual([self.command(event)[0] for event in self.docker_calls], expected)
 
 
 if __name__ == "__main__":

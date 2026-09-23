@@ -5,6 +5,7 @@ No existing dam containers, settings, homes, or workspaces are used.
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import shutil
@@ -106,6 +107,60 @@ registry.write_text(json.dumps(state))
             "exec", "--user", "root", self.name, "cat", "/home/.dam/users.json",
         ).stdout)
         self.assertEqual(restored, original)
+
+    def test_added_accounts_are_saved_and_share_workspace_without_restarting(self):
+        self.node("tmux", "new-session", "-d", "-s", "keep-alive")
+        tmux_pid = self.node("tmux", "display-message", "-p", "#{pid}").stdout
+        self.admin("add", "alice")
+        self.admin("add", "bob")
+        self.assertEqual(self.node("tmux", "display-message", "-p", "#{pid}").stdout, tmux_pid)
+        registry = json.loads(self.docker(
+            "exec", "--user", "root", self.name, "cat", "/home/.dam/users.json",
+        ).stdout)
+        for name in ("alice", "bob"):
+            self.assertEqual(registry["accounts"][name], {
+                "uid": int(self.account(name, "id -u").stdout),
+                "gid": int(self.account(name, "id -g").stdout),
+            })
+        environment = json.loads(self.account("alice", "python3 -c 'import json,os; print(json.dumps(dict(os.environ)))'").stdout)
+        for key, suffix in (
+            ("HOME", ""), ("GH_CONFIG_DIR", "/.config/gh"),
+            ("GLAB_CONFIG_DIR", "/.config/glab-cli"), ("CODEX_HOME", "/.codex"),
+            ("NPM_CONFIG_PREFIX", "/.local"),
+        ):
+            self.assertEqual(environment[key], "/home/alice" + suffix)
+        self.assertNotIn("/home/node", environment["PATH"])
+        nonlogin = json.loads(self.node("su", "alice", "-c", "python3 -c 'import json,os; print(json.dumps(dict(os.environ)))'").stdout)
+        for key in ("HOME", "GH_CONFIG_DIR", "GLAB_CONFIG_DIR", "CODEX_HOME", "NPM_CONFIG_PREFIX", "PATH"):
+            self.assertEqual(nonlogin[key], environment[key], key)
+        self.assertEqual(self.node("su", "alice", "-c", "umask").stdout.strip(), "0002")
+        self.account("alice", "su - bob -c 'su - node -c id'")
+        self.assertNotEqual(self.account("alice", "cat /home/node/.bashrc", check=False).returncode, 0)
+
+        self.account("alice", "cd /workspace; git init repo; cd repo; echo first > file; git add file; git -c user.name=Alice -c user.email=alice@example.test commit -m first")
+        self.account("bob", "cd /workspace/repo; echo second >> file; git add file; git -c user.name=Bob -c user.email=bob@example.test commit -m second")
+        self.node("bash", "-c", "cd /workspace/repo; echo third >> file; git add file; git -c user.name=Node -c user.email=node@example.test commit -m third")
+        self.assertEqual(self.node("git", "-C", "/workspace/repo", "rev-list", "--count", "HEAD").stdout.strip(), "3")
+        self.account("alice", "tmux new-session -d -s alice-session")
+        self.assertNotEqual(self.node("tmux", "has-session", "-t", "alice-session", check=False).returncode, 0)
+
+    def test_su_checks_users_group_without_adopting_unmanaged_accounts(self):
+        self.admin("add", "alice")
+        for args in (("su",), ("su", "-", "root"), ("su", "daemon")):
+            self.assertNotEqual(self.node(*args, check=False).returncode, 0, args)
+        self.docker("exec", "--user", "root", self.name, "useradd", "-M", "-u", "30000", "-s", "/bin/bash", "outsider")
+        self.assertNotEqual(self.node("su", "-", "outsider", check=False).returncode, 0)
+        self.assertNotEqual(self.docker("exec", "--user", "outsider", self.name, "su", "-", "alice", "-c", "id", check=False).returncode, 0)
+        self.docker("exec", "--user", "root", self.name, "usermod", "--append", "--groups", "users", "outsider")
+        self.assertEqual(self.node("su", "outsider", "-c", "id -un").stdout.strip(), "outsider")
+        self.assertEqual(self.docker("exec", "--user", "outsider", self.name, "su", "-", "alice", "-c", "id -un").stdout.strip(), "alice")
+        self.assertNotEqual(self.admin("add", "outsider", check=False).returncode, 0)
+
+    def test_concurrent_additions_keep_unique_ids_and_one_registration(self):
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda name: self.admin("add", name), ("alice", "bob", "alice", "_review")))
+        identities = {self.account(name, "id -u").stdout.strip() for name in ("alice", "bob", "_review")}
+        self.assertEqual(len(identities), 3)
 
 
 if __name__ == "__main__":

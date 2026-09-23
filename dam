@@ -5,17 +5,19 @@ dam_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: ./dam WORKSPACE [shell|tmux SESSION|sessions|exec COMMAND...|sync|build|config|stop|down|ps|logs]
+Usage: ./dam WORKSPACE [shell|tmux SESSION|sessions|exec COMMAND...|user add USER|sync|build|config|stop|down|ps|logs]
 
 WORKSPACE is a directory name under workspaces/ next to this script.
 The default action is shell. build builds the image and starts the container.
 tmux requires SESSION and creates or attaches to that session.
 sessions lists tmux sessions without starting the container.
+user add creates a persistent account; switch inside the container with su - USER.
 
 Examples:
   ./dam a build
   ./dam a tmux coding
   ./dam a sessions
+  ./dam a user add alice
   ./dam b tmux coding
   ./dam b exec git status
 USAGE
@@ -48,6 +50,17 @@ case "$action" in
     ;;
   exec)
     if [[ $# -eq 0 ]]; then usage >&2; exit 2; fi
+    ;;
+  user)
+    if [[ $# -ne 2 || "$1" != add ]]; then usage >&2; exit 2; fi
+    if [[ ! "$2" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+      printf 'Invalid user name: use 1-32 lowercase letters, digits, underscores or hyphens, starting with a letter or underscore.\n' >&2
+      exit 2
+    fi
+    if [[ "$2" == root || "$2" == users ]]; then
+      printf 'Invalid user name: %s is reserved.\n' "$2" >&2
+      exit 2
+    fi
     ;;
   build|stop|down|ps|logs)
     if [[ $# -gt 0 && "$1" != -* ]]; then usage >&2; exit 2; fi
@@ -132,6 +145,14 @@ case "$action" in
     else
       exec "${compose[@]}" exec -T --user node dev dam-user-env "$@"
     fi
+    ;;
+  user)
+    prepare
+    dam_running="$("${compose[@]}" ps --status running -q dev)"
+    if [[ -z "$dam_running" ]]; then
+      "${compose[@]}" up -d --wait dev
+    fi
+    exec "${compose[@]}" exec -T --user root dev python3 /usr/local/lib/dam/users.py add "$2"
     ;;
   sync)
     prepare

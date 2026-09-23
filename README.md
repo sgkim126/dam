@@ -66,7 +66,7 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 워크스페이스는 `dam` 스크립트가 있는 디렉토리의 **`workspaces/<이름>`**에 생성합니다.
 예를 들어 `./dam ws3 build`는 `dam/workspaces/ws3`를 사용합니다.
 다른 디렉토리에서 스크립트를 호출해도 같은 위치를 사용합니다.
-디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `sync`, `config` 실행 시 생성합니다.
+디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `user add`, `sync`, `config` 실행 시 생성합니다.
 `workspaces/`는 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
 
 워크스페이스 디렉토리의 정규화한 절대경로를 기준으로 `dam-<폴더이름>-<경로해시>`라는 Compose 프로젝트 이름을 생성합니다.
@@ -78,26 +78,37 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 이 볼륨에 기본 계정(`node`)을 포함한 모든 사용자의 홈과 계정 등록 정보를 보관합니다.
 `./dam WORKSPACE config`로 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
 
-## 계정 복원과 전환
+## 사용자 추가와 전환
 
 사용자 등록 정보는 워크스페이스별로 보관합니다.
 컨테이너 시작 시 계정 관리 도구가 등록된 계정과 UID/GID를 복원하고, 홈과 공통 설정을 초기화합니다.
 기본 계정 `node`는 자동으로 등록됩니다.
-추가 계정은 `/home/.dam/users.json`에 미리 등록한 정보로 복원하며, 시스템에 따로 생성한 계정은 자동으로 등록하지 않습니다.
+추가 계정은 호스트의 `./dam WORKSPACE user add USER` 명령으로 등록한 뒤 사용할 수 있으며, 시스템에 따로 생성한 계정은 자동으로 등록하지 않습니다.
 
 컨테이너에 미리 준비한 일반 계정 중 `users` 그룹에 속하는 계정끼리는 비밀번호 없이 전환할 수 있습니다.
 `node`와 추가한 사용자는 이 그룹에 자동으로 들어갑니다.
 대상 계정은 UID 1000 이상이어야 하며, `root`/시스템 계정/그룹에 속하지 않은 계정으로의 전환은 거부합니다.
 
 ```bash
-# alice는 users.json에 미리 등록한 사용자
+# 호스트
+./dam ws1 user add alice
+./dam ws1 user add bob
+./dam ws1
+
+# 컨테이너 안
 su - alice
 cd /workspace
 tmux new-session -A -s coding
 
+# alice에서 bob으로 전환
+su - bob
 # 이전 셸로 복귀
 exit
 ```
+
+계정 이름은 소문자 또는 밑줄로 시작하는 1–32자의 소문자, 숫자, 밑줄, 하이픈을 사용합니다.
+`root`와 기존 시스템 계정은 추가할 수 없고, 이미 등록한 계정을 다시 추가하면 기존 데이터를 유지합니다.
+`user add`는 중지된 컨테이너를 시작하며, 실행 중인 컨테이너에는 재시작 없이 계정을 추가합니다.
 
 `su USER`와 `su - USER` 모두 사용할 수 있습니다.
 `su - USER`는 해당 사용자의 홈으로 이동합니다.
@@ -200,7 +211,7 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 | Git 설정/SSH 키/도구 캐시 | -- | `/home/node` | 컨테이너 볼륨에 보관 |
 
 공통 설정 동기화는 **호스트 -> 컨테이너 단방향**입니다.
-`./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
+`./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE user add USER`, `./dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
 컨테이너에서 수정한 공통 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집해야 합니다.
 컨테이너에서만 적용하고 싶은 설정은 `/workspace/.bashrc`에 설정하세요.
 이 파일은 동기화되지 않습니다.
@@ -232,6 +243,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ./dam ws1 config                 # Docker 데몬 없이 경로/설정 검사
 ./dam ws1 exec codex --version
 ./dam ws1 exec nvim --version
+./dam ws1 user add alice         # ws1에 영구 사용자 추가, su - alice로 전환
 ./dam ws1 ps
 ./dam ws1 sessions               # ws1 컨테이너의 tmux 세션 목록
 ./dam ws1 logs --tail 50
@@ -254,13 +266,13 @@ Node.js는 24 계열이며 Neovim/gh/OS 패키지는 빌드 시 공식 APT 저�
 
 ## 테스트
 
-단위 테스트는 워크스페이스 이름과 등록 정보 검증, 런처 실행 순서와 오류 전달, 설정 동기화와 기존 파일 보존을 확인합니다.
+단위 테스트는 워크스페이스와 계정 이름 및 등록 정보 검증, 런처 실행 순서와 오류 전달, 설정 동기화와 기존 파일 보존을 확인합니다.
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-미리 작성한 등록 정보의 계정 복원과 컨테이너 재생성 후 UID/GID 및 홈 보존은 별도 임시 컨테이너와 볼륨으로 검증합니다.
+실제 Linux 계정 전환, 공유 파일 쓰기, 계정 동시 추가, 컨테이너 재생성 후 복원은 별도 임시 컨테이너와 볼륨으로 검증합니다.
 기존 작업 컨테이너와 데이터는 사용하지 않습니다.
 
 ```bash
