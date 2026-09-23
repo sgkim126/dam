@@ -1,6 +1,6 @@
 # 담(dam) - 격리 환경 생성기
 
-여러 저장소를 클론하고 Codex/gh/glab를 사용하는 Linux 작업 환경입니다.
+Codex/gh/glab를 사용하는 Linux 작업 환경입니다.
 
 `git`, `tmux`, Node.js/npm, `glab`, `gh`, Python/pip/venv/pipx, `codex`, `nvim`을 설치합니다.
 Apple Silicon(arm64)과 Intel/AMD(amd64)를 지원합니다.
@@ -105,7 +105,9 @@ Codex device login은 ChatGPT 보안 설정 또는 워크스페이스 정책에�
 GitLab device login은 서버 17.9 이상에서 지원됩니다.
 지원하지 않는 서버에서는 `glab auth login --hostname YOUR_GITLAB --git-protocol https`로 대화형 토큰 로그인을 사용합니다.
 
-## 저장소 작업
+## 작업 공간
+
+`/workspace`에서 일반 파일을 다루거나 Git 저장소를 클론해 작업할 수 있습니다.
 
 ```bash
 cd /workspace
@@ -117,15 +119,34 @@ codex
 nvim .
 ```
 
-`/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `dam/workspaces/ws1`)와 연결됩니다.
-저장소마다 Codex를 실행하면 되고, 여러 저장소를 동시에 작업할 때는 tmux 창을 나누거나 이름이 다른 세션을 사용하면 됩니다.
-같은 컨테이너의 모든 저장소는 같은 홈과 CLI 계정을 사용합니다.
+`/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `dam/workspaces/ws1`)를 연결한 bind mount입니다.
+작업할 디렉토리에서 Codex를 실행하면 되고, 여러 작업을 동시에 진행할 때는 tmux 창을 나누거나 이름이 다른 세션을 사용하면 됩니다.
+같은 컨테이너의 모든 작업은 같은 홈과 CLI 계정을 사용합니다.
+
+컨테이너 시작 시 `/workspace` 디렉토리 자체에만 공용 `users` 그룹, 그룹 읽기/쓰기/실행 권한과 setgid를 적용합니다.
+`umask 0002`와 디렉토리의 그룹 상속으로 일반적인 방식으로 만든 새 파일과 하위 디렉토리를 공유합니다.
+기존 파일과 하위 디렉토리의 소유권·권한은 변경하지 않으며, 애플리케이션이 `0600`처럼 명시적으로 제한한 파일은 자동으로 공유하지 않습니다.
+`sync`는 설정만 동기화하며 작업 공간 권한을 변경하지 않습니다.
+기본 계정 `node`는 `users` 그룹에 속합니다.
+`/workspace`에서 GID 변경, Unix 권한, setgid 상속을 지원하는 파일시스템만 지원합니다.
+권한 변경 요청이 오류를 반환하면 시작을 중단합니다. 변경 요청을 성공으로 처리하면서 실제로 적용하지 않는 파일시스템은 지원하지 않으며, 별도로 감지하지 않습니다.
+
+사용자 네임스페이스로 UID/GID를 재매핑하지 않는 Linux 호스트에서는 컨테이너 시작 시 `os.fchown`과 `os.fchmod`가 호스트 작업 공간 디렉토리 자체의 GID와 권한을 직접 변경합니다.
+소유자 UID는 유지하고, 그룹은 컨테이너 `users` 그룹의 GID(현재 기본 이미지에서는 `100`)로 변경합니다.
+호스트에서도 같은 숫자 GID가 적용되며, 호스트의 그룹 이름은 `users`와 다를 수 있습니다.
+기존 소유자·기타 사용자 권한을 유지하면서 그룹 읽기/쓰기/실행 권한과 setgid를 추가하고, setuid와 sticky bit는 제거합니다.
+예를 들어 `0700`은 `2770`, `0755`는 `2775`가 됩니다. 이 변경은 컨테이너를 중지하거나 삭제해도 호스트에 남습니다.
+
+그룹을 상속하는 디렉토리에서 `umask 0002`로 일반적인 방식으로 만든 새 파일과 하위 디렉토리는 호스트에서도 같은 GID의 그룹 쓰기를 허용합니다.
+기존 파일과 하위 디렉토리의 소유권·권한은 변경하지 않지만, 상위 경로를 통과할 수 있는 해당 호스트 그룹 사용자는 작업 공간 바로 아래 항목을 삭제하거나 이름을 바꿀 수 있습니다.
+여러 사용자가 쓰는 Linux 호스트에서는 의도하지 않은 쓰기 권한이 생기지 않도록 상위 경로의 접근 권한과 해당 GID의 그룹 구성원을 확인하세요.
+Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서는 호스트와 컨테이너 사이의 GID·권한 매핑이 다를 수 있습니다.
 
 ## 공유와 분리
 
 | 항목 | 호스트 경로 | 컨테이너 경로 | 동작 |
 | --- | --- | --- | --- |
-| 클론한 저장소 | `dam/workspaces/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
+| 작업 공간 | `dam/workspaces/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
 | 워크스페이스 Bash 설정 | `dam/workspaces/{WORKSPACE}/.bashrc` | `/workspace/.bashrc` | 읽기/쓰기 공유, 존재하면 source, `sync`는 생성하거나 수정하지 않음 |
 | Codex 공통 설정 | `~/.codex/config.toml` | `/etc/codex/config.toml` | 호스트에서 단방향 동기화 |
 | Codex 사용자 스킬 | `~/.codex/skills`, `~/.agents/skills` | `/home/node/.codex/skills`, `/home/node/.agents/skills` | 사용자 스킬만 복사한 뒤 읽기 전용으로 연결 |
@@ -155,8 +176,11 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 호스트의 Codex `auth.json`, 대화 기록, gh/glab 설정, `.gitconfig`, `.ssh`, SSH agent, Docker 소켓은 연결하지 않습니다.
 호스트의 인증 토큰 환경변수도 전달하지 않습니다.
 공유 설정은 `.host-settings/`에 생성되며 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
-컨테이너는 일반 사용자 `node`로 실행하고 추가 권한과 호스트 네트워크를 사용하지 않습니다.
-호스트 파일 중 `/workspace`에 연결된 저장소는 컨테이너에서 수정/삭제할 수 있습니다.
+컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
+런처의 셸과 명령도 항상 `node`로 실행합니다.
+파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.
+`no-new-privileges`를 유지하고 호스트 네트워크는 사용하지 않습니다.
+`/workspace`에 연결된 호스트 작업 공간의 파일은 컨테이너에서 수정/삭제할 수 있습니다.
 
 ## 관리
 
@@ -169,7 +193,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ./dam ws1 sessions               # ws1 컨테이너의 tmux 세션 목록
 ./dam ws1 logs --tail 50
 ./dam ws1 stop                   # ws1 컨테이너 중지
-./dam ws1 down                   # ws1 컨테이너 삭제, 홈 볼륨/저장소 유지
+./dam ws1 down                   # ws1 컨테이너 삭제, 홈 볼륨/작업 공간 유지
 ./dam ws1 build                  # 이미지 다시 빌드하고 컨테이너 실행
 ./dam ws1 build --no-cache       # 캐시 없이 다시 빌드해 Codex 최신 버전 설치 후 컨테이너 실행
 ./dam ws1                        # ws1 컨테이너 셸 접속

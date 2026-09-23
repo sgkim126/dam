@@ -95,8 +95,8 @@ prepare() {
 }
 
 import_settings() {
-  "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
-  "${compose[@]}" exec -T dev bash -c '
+  "${compose[@]}" exec -T --user node dev dam-user-env python3 /usr/local/lib/dam/import-settings.py
+  "${compose[@]}" exec -T --user node dev dam-user-env bash -c '
     if ! grep -qxF "alias vi=nvim" "$HOME/.bashrc" 2>/dev/null; then
       printf "\nalias vi=nvim\n" >> "$HOME/.bashrc"
     fi
@@ -120,11 +120,11 @@ start() {
 case "$action" in
   shell)
     start
-    exec "${compose[@]}" exec dev bash -l
+    exec "${compose[@]}" exec --user node dev dam-user-env bash -l
     ;;
   tmux)
     start
-    exec "${compose[@]}" exec dev tmux new-session -A -s "$1"
+    exec "${compose[@]}" exec --user node dev dam-user-env tmux new-session -A -s "$1"
     ;;
   sessions)
     dam_running="$("${compose[@]}" ps --status running -q dev)"
@@ -132,14 +132,14 @@ case "$action" in
       printf 'No tmux sessions: workspace container is not running.\n'
       exit 0
     fi
-    exec "${compose[@]}" exec -T dev tmux list-sessions
+    exec "${compose[@]}" exec -T --user node dev dam-user-env tmux list-sessions
     ;;
   exec)
     start
     if [[ -t 0 && -t 1 ]]; then
-      exec "${compose[@]}" exec dev "$@"
+      exec "${compose[@]}" exec --user node dev dam-user-env "$@"
     else
-      exec "${compose[@]}" exec -T dev "$@"
+      exec "${compose[@]}" exec -T --user node dev dam-user-env "$@"
     fi
     ;;
   sync)

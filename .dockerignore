@@ -4,3 +4,6 @@
 !docker/import-settings.py
 !docker/prepare-settings.py
 !docker/entrypoint.sh
+!docker/workspace.py
+!docker/profile.sh
+!docker/user-env.sh
