@@ -68,6 +68,10 @@ class DamLauncherTests(unittest.TestCase):
                     sys.exit(19)
                 if action == "ps" and os.environ.get("DAM_TEST_RUNNING") == "1":
                     print("fake-running-container")
+                if args[-3:] == ["dev", "tmux", "list-sessions"]:
+                    sys.stdout.write(os.environ.get("DAM_TEST_SESSION_LIST", ""))
+                    sys.stderr.write(os.environ.get("DAM_TEST_SESSION_ERROR", ""))
+                    sys.exit(int(os.environ.get("DAM_TEST_SESSION_EXIT", "0")))
                 """
             )
         )
@@ -145,6 +149,7 @@ class DamLauncherTests(unittest.TestCase):
             ("unused-workspace", "tmux", "review:notes"),
             ("unused-workspace", "tmux", "review\nnotes"),
             ("unused-workspace", "tmux", "review\rnotes"),
+            ("unused-workspace", "sessions", "extra"),
             ("unused-workspace", "sync", "extra"),
             ("unused-workspace", "config", "extra"),
             ("unused-workspace", "stop", "extra"),
@@ -295,6 +300,57 @@ class DamLauncherTests(unittest.TestCase):
                     "exec", "dev", "tmux", "new-session", "-A", "-s", session,
                 ])
         self.assertEqual(len(projects), 1)
+
+    def test_sessions_lists_running_workspace_without_preparing_or_starting_it(self):
+        output = "first: 1 windows (attached)\nsecond: 2 windows\n"
+        result = self.run_dam("personal", "sessions", extra_env={
+            "DAM_TEST_RUNNING": "1",
+            "DAM_TEST_SESSION_LIST": output,
+        })
+        self.assert_success(result)
+        self.assertEqual(result.stdout, output)
+        self.assertEqual(result.stderr, "")
+        self.assert_selected_workspace(self.workspaces_root / "personal")
+        self.assertEqual(self.events, self.docker_calls)
+        self.assertEqual([self.command(event) for event in self.docker_calls], [
+            ["ps", "--status", "running", "-q", "dev"],
+            ["exec", "-T", "dev", "tmux", "list-sessions"],
+        ])
+        self.assertFalse((self.workspaces_root / "personal").exists())
+
+    def test_sessions_handles_stopped_workspace_without_creating_it(self):
+        result = self.run_dam("personal", "sessions")
+        self.assert_success(result)
+        self.assertEqual(result.stdout, "No tmux sessions: workspace container is not running.\n")
+        self.assertEqual(self.events, self.docker_calls)
+        self.assertEqual([self.command(event) for event in self.docker_calls], [
+            ["ps", "--status", "running", "-q", "dev"],
+        ])
+        self.assertFalse((self.workspaces_root / "personal").exists())
+
+    def test_sessions_preserves_tmux_error_and_exit_status(self):
+        error = "no server running on /tmp/tmux-1000/default\n"
+        result = self.run_dam("personal", "sessions", extra_env={
+            "DAM_TEST_RUNNING": "1",
+            "DAM_TEST_SESSION_ERROR": error,
+            "DAM_TEST_SESSION_EXIT": "1",
+        })
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, error)
+
+    def test_sessions_propagates_docker_errors(self):
+        for action, expected_commands in (("ps", ["ps"]), ("exec", ["ps", "exec"])):
+            with self.subTest(action=action):
+                result = self.run_dam("personal", "sessions", extra_env={
+                    "DAM_TEST_RUNNING": "1",
+                    "DAM_TEST_FAIL_ACTION": action,
+                })
+                self.assertEqual(result.returncode, 19)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(self.events, self.docker_calls)
+                self.assertEqual([self.command(event)[0] for event in self.docker_calls], expected_commands)
+                self.assertFalse((self.workspaces_root / "personal").exists())
 
     def test_exec_preserves_command_arguments(self):
         result = self.run_dam("ws2", "exec", "printf", "%s", "argument with spaces", "$literal")

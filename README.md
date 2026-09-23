@@ -7,6 +7,8 @@ Apple Silicon(arm64)과 Intel/AMD(amd64)를 지원합니다.
 
 ## 처음 실행
 호스트에 Linux 컨테이너를 실행할 수 있는 Docker 엔진, Bash, Docker CLI, Docker Compose(`docker compose`), Python 3.11 이상이 필요합니다.
+명령은 현재 Docker CLI의 연결 설정을 사용합니다.
+Docker 엔진에서 워크스페이스와 `.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
 
 ```bash
 docker info
@@ -42,6 +44,7 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 ```bash
 ./dam ws1 tmux coding         # coding 세션 생성 또는 연결
 ./dam ws1 tmux review         # review 세션 생성 또는 연결
+./dam ws1 sessions            # ws1의 tmux 세션 목록
 ```
 
 지정하는 세션 이름은 비어 있거나 `.`, `:`, 줄바꿈을 포함할 수 없습니다.
@@ -156,6 +159,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ./dam ws1 exec codex --version
 ./dam ws1 exec nvim --version
 ./dam ws1 ps
+./dam ws1 sessions               # ws1 컨테이너의 tmux 세션 목록
 ./dam ws1 logs --tail 50
 ./dam ws1 stop                   # ws1 컨테이너 중지
 ./dam ws1 down                   # ws1 컨테이너 삭제, 홈 볼륨/저장소 유지
@@ -166,6 +170,9 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ```
 
 명령은 선택한 워크스페이스의 Compose 프로젝트에만 적용됩니다.
+`sessions`는 설정을 동기화하거나 중지된 컨테이너를 시작하지 않습니다.
+컨테이너가 실행 중이 아니면 세션을 조회할 수 없다는 안내를 출력하고, 실행 중이면 `tmux list-sessions` 결과를 출력합니다.
+실행 중인 컨테이너에 tmux 서버가 없으면 tmux의 기본 오류 메시지와 종료 상태를 반환합니다.
 인증 정보와 기록은 해당 프로젝트의 홈 볼륨에 남습니다.
 `./dam WORKSPACE down -v`는 그 홈 볼륨까지 삭제하므로 초기화할 때만 사용하세요.
 
@@ -173,7 +180,7 @@ Node.js는 24 계열이며 Neovim/gh/OS 패키지는 빌드 시 공식 APT 저�
 
 ## 테스트
 
-워크스페이스 이름 검증, 프로젝트 분리, build 실행 순서와 실패 처리, tmux 세션 이름 전달, 검증은 임시 디렉토리와 Docker 명령 대역을 사용하는 테스트로 확인합니다.
+워크스페이스 이름 검증, 프로젝트 분리, build 실행 순서와 실패 처리, tmux 세션 이름 전달, 검증, 세션 목록 조회는 임시 디렉토리와 Docker 명령 대역을 사용하는 테스트로 확인합니다.
 
 ```bash
 python3 -m unittest discover -s tests -v

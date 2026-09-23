@@ -5,15 +5,17 @@ dam_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: ./dam WORKSPACE [shell|tmux SESSION|exec COMMAND...|sync|build|config|stop|down|ps|logs]
+Usage: ./dam WORKSPACE [shell|tmux SESSION|sessions|exec COMMAND...|sync|build|config|stop|down|ps|logs]
 
 WORKSPACE is a directory name under workspaces/ next to this script.
 The default action is shell. build builds the image and starts the container.
 tmux requires SESSION and creates or attaches to that session.
+sessions lists tmux sessions without starting the container.
 
 Examples:
   ./dam a build
   ./dam a tmux coding
+  ./dam a sessions
   ./dam b tmux coding
   ./dam b exec git status
 USAGE
@@ -28,7 +30,7 @@ if [[ $# -gt 0 ]]; then shift; fi
 
 # Validate before creating directories, copying settings, or calling Docker.
 case "$action" in
-  shell|sync|config)
+  shell|sessions|sync|config)
     if [[ $# -gt 0 ]]; then usage >&2; exit 2; fi
     ;;
   tmux)
@@ -110,6 +112,14 @@ case "$action" in
   tmux)
     start
     exec "${compose[@]}" exec dev tmux new-session -A -s "$1"
+    ;;
+  sessions)
+    dam_running="$("${compose[@]}" ps --status running -q dev)"
+    if [[ -z "$dam_running" ]]; then
+      printf 'No tmux sessions: workspace container is not running.\n'
+      exit 0
+    fi
+    exec "${compose[@]}" exec -T dev tmux list-sessions
     ;;
   exec)
     start
