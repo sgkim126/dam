@@ -35,6 +35,8 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 ./dam workspace-amd build
 
 `build`는 이미지를 빌드한 뒤 해당 워크스페이스의 컨테이너를 백그라운드에서 실행합니다.
 `build`와 실행 중인 컨테이너의 `sync`는 컨테이너 `~/.bashrc`에 `alias vi=nvim`도 중복 없이 추가합니다.
+`~/.bashrc`에서 `/workspace/.bashrc`가 있으면 함께 불러오도록 설정합니다.
+`/workspace/.bashrc`는 사용자가 직접 관리하며, `sync`는 이 파일을 생성하거나 수정하지 않습니다.
 새 셸부터 적용되며, 이미 열린 셸에서는 `source ~/.bashrc`로 반영합니다.
 
 tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연결할 수 있습니다.
@@ -124,6 +126,7 @@ nvim .
 | 항목 | 호스트 경로 | 컨테이너 경로 | 동작 |
 | --- | --- | --- | --- |
 | 클론한 저장소 | `dam/workspaces/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
+| 워크스페이스 Bash 설정 | `dam/workspaces/{WORKSPACE}/.bashrc` | `/workspace/.bashrc` | 읽기/쓰기 공유, 존재하면 source, `sync`는 생성하거나 수정하지 않음 |
 | Codex 공통 설정 | `~/.codex/config.toml` | `/etc/codex/config.toml` | 호스트에서 단방향 동기화 |
 | Codex 사용자 스킬 | `~/.codex/skills`, `~/.agents/skills` | `/home/node/.codex/skills`, `/home/node/.agents/skills` | 사용자 스킬만 복사한 뒤 읽기 전용으로 연결 |
 | Codex 선택적 rules/agents/AGENTS.md | `~/.codex/rules`, `~/.codex/agents`, `~/.codex/AGENTS.md` | `/home/node/.codex/rules`, `/home/node/.codex/agents`, `/home/node/.codex/AGENTS.md` | 존재하는 항목을 복사한 뒤 읽기 전용으로 연결 |
@@ -135,9 +138,11 @@ nvim .
 | glab 로그인 | -- | `/home/node/.config/glab-cli` | 컨테이너 볼륨에 보관 |
 | Git 설정/SSH 키/도구 캐시 | -- | `/home/node` | 컨테이너 볼륨에 보관 |
 
-공유는 **호스트 -> 컨테이너 단방향**입니다.
+공통 설정 동기화는 **호스트 -> 컨테이너 단방향**입니다.
 `./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE sync`를 실행할 때 갱신합니다.
-컨테이너에서 수정한 공유 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집하세요.
+컨테이너에서 수정한 공통 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집해야 합니다.
+컨테이너에서만 적용하고 싶은 설정은 `/workspace/.bashrc`에 설정하세요.
+이 파일은 동기화되지 않습니다.
 실행 중인 tmux에는 `tmux source-file ~/.tmux.conf`로 반영하고, 실행중인 Codex/Neovim은 다시 실행할 때 반영됩니다.
 
 Codex는 공통 설정을 시스템 설정 계층에서 읽습니다.
