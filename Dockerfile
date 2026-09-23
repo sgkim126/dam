@@ -24,7 +24,7 @@ RUN npm install -g @openai/codex \
     && npm cache clean --force \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && mkdir -p /etc/codex /home/node/.config /home/node/.local/bin /home/node/.codex /workspace \
-    && chown -R node:node /etc/codex /home/node /workspace \
+    && chown -R node:node /home/node /workspace \
     && groupadd --system --force users \
     && usermod --append --groups users node \
     && git config --system core.sharedRepository group \

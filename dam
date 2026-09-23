@@ -95,7 +95,8 @@ prepare() {
 }
 
 import_settings() {
-  "${compose[@]}" exec -T --user node dev dam-user-env python3 /usr/local/lib/dam/import-settings.py
+  "${compose[@]}" exec -T --user root dev python3 /usr/local/lib/dam/import-settings.py --system-only
+  "${compose[@]}" exec -T --user node dev dam-user-env python3 /usr/local/lib/dam/import-settings.py --user-only
   "${compose[@]}" exec -T --user node dev dam-user-env bash -c '
     if ! grep -qxF "alias vi=nvim" "$HOME/.bashrc" 2>/dev/null; then
       printf "\nalias vi=nvim\n" >> "$HOME/.bashrc"

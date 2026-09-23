@@ -51,7 +51,7 @@ def mac_path(value) -> bool:
     return False
 
 
-def portable_codex_config(source: Path, home: Path) -> tuple[str, list[str]]:
+def portable_codex_config(source: Path, asset_root: Path) -> tuple[str, list[str]]:
     config = tomllib.loads(source.read_text()) if source.is_file() else {}
     skipped = _shared.redact_credentials(config)
     for key in EXCLUDED_CODEX_KEYS:
@@ -74,34 +74,38 @@ def portable_codex_config(source: Path, home: Path) -> tuple[str, list[str]]:
     if isinstance(skills, dict) and isinstance(skills.get("config"), list):
         portable_skills = []
         for index, skill in enumerate(skills["config"]):
-            if isinstance(skill, dict) and mac_path(skill.get("path")):
-                portable = shared_asset_path(skill["path"], home)
-                if portable is None:
+            if isinstance(skill, dict) and isinstance(skill.get("path"), str):
+                portable = shared_asset_path(skill["path"], asset_root)
+                if portable is not None:
+                    skill["path"] = portable
+                elif mac_path(skill["path"]):
                     skipped.append(f"skills.config[{index}].path")
                     continue
-                skill["path"] = portable
             portable_skills.append(skill)
         skills["config"] = portable_skills
     agents = config.get("agents", {})
     if isinstance(agents, dict):
         for name in list(agents):
             agent = agents[name]
-            if isinstance(agent, dict) and mac_path(agent.get("config_file")):
-                portable = shared_asset_path(agent["config_file"], home)
-                if portable is None:
+            if isinstance(agent, dict) and isinstance(agent.get("config_file"), str):
+                portable = shared_asset_path(agent["config_file"], asset_root)
+                if portable is not None:
+                    agent["config_file"] = portable
+                elif mac_path(agent["config_file"]):
                     del agents[name]
                     skipped.append(f"agents.{name}.config_file")
-                else:
-                    agent["config_file"] = portable
     config["cli_auth_credentials_store"] = "file"
     return _shared.serialize_config(config), sorted(skipped)
 
 
-def shared_asset_path(value: str, home: Path) -> str | None:
-    match = re.fullmatch(r"/Users/[^/]+/(\.codex/(?:skills|agents|rules)|\.agents/skills)(/.*)?", value)
+def shared_asset_path(value: str, asset_root: Path) -> str | None:
+    match = re.fullmatch(
+        r"(?:/(?:Users|home)/[^/]+|/root)/(\.codex/(?:skills|agents|rules)|\.agents/skills)(/.*)?",
+        value,
+    )
     if match is None or ".." in Path(value).parts:
         return None
-    return str(home / (match[1] + (match[2] or "")))
+    return str(asset_root / (match[1].removeprefix(".") + (match[2] or "")))
 
 
 def safe_parent(home: Path, target: Path) -> None:
@@ -131,7 +135,7 @@ def attach(source: Path, target: Path, home: Path, source_root: Path) -> None:
             suffix += 1
         target.rename(backup)
         print(f"Preserved existing container setting: {target.relative_to(home)}")
-    target.symlink_to(source, target_is_directory=source.is_dir())
+    target.symlink_to(source)
 
 
 def attach_skills(source: Path, target: Path, home: Path, source_root: Path) -> None:
@@ -193,16 +197,16 @@ def mirror_editor_settings(source: Path, home: Path) -> None:
     atomic_write(manifest, (json.dumps(sorted(files), indent=2) + "\n").encode())
 
 
-def import_settings(source: Path, home: Path, system_config: Path) -> None:
-    source = source.expanduser().resolve()
-    home = home.expanduser().resolve()
-    if not source.is_dir():
-        raise ValueError("Host settings mount is missing; run the host launcher first")
-    home.mkdir(parents=True, exist_ok=True)
-    config, skipped = portable_codex_config(source / "codex/config.toml", home)
+def import_system_settings(source: Path, system_config: Path) -> None:
+    """Write only common settings; the administrator owns the shared lock."""
+    config, skipped = portable_codex_config(source / "codex/config.toml", source)
     atomic_write(system_config, config.encode())
     for key in skipped:
         print(f"Skipped host-only Codex setting: {json.dumps(key)}")
+
+
+def import_user_settings(source: Path, home: Path) -> None:
+    """Run as the destination user, preserving their identity and session data."""
     attach_skills(source / "codex/skills", home / ".codex/skills", home, source)
     for name in ("rules", "agents", "AGENTS.md"):
         attach(source / "codex" / name, home / ".codex" / name, home, source)
@@ -215,19 +219,40 @@ def import_settings(source: Path, home: Path, system_config: Path) -> None:
     print("Host preferences imported; container login, history, and local Codex config retained.")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path("/mnt/host-settings"))
-    parser.add_argument("--home", type=Path, default=Path.home())
-    parser.add_argument("--system-config", type=Path, default=Path("/etc/codex/config.toml"))
-    args = parser.parse_args()
-    home = args.home.expanduser().resolve()
+def import_settings(
+    source: Path,
+    home: Path,
+    system_config: Path,
+    *,
+    system_only: bool,
+) -> None:
+    source = source.expanduser().resolve()
+    if not source.is_dir():
+        raise ValueError("Host settings mount is missing; run the host launcher first")
+    if system_only:
+        import_system_settings(source, system_config)
+        return
+    home = home.expanduser().resolve()
     home.mkdir(parents=True, exist_ok=True)
     lock_path = home / ".local/state/dam-settings/import.lock"
     safe_parent(home, lock_path)
+    if lock_path.is_symlink():
+        raise ValueError(f"Refusing to use a symlink for the settings lock: {lock_path}")
     with lock_path.open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        import_settings(args.source, home, args.system_config)
+        import_user_settings(source, home)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--system-only", action="store_true", help="Import common settings without touching a home")
+    mode.add_argument("--user-only", action="store_false", dest="system_only", help="Import user settings without changing the system config")
+    args = parser.parse_args()
+    import_settings(
+        Path("/mnt/host-settings"), Path.home(), Path("/etc/codex/config.toml"),
+        system_only=args.system_only,
+    )
 
 
 if __name__ == "__main__":

@@ -265,7 +265,8 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual(commands[:-1], [
             ["build", "--pull", "--no-cache"],
             ["up", "-d", "--wait", "dev"],
-            ["exec", "-T", "--user", "node", "dev", "dam-user-env", "python3", "/usr/local/lib/dam/import-settings.py"],
+            ["exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/import-settings.py", "--system-only"],
+            ["exec", "-T", "--user", "node", "dev", "dam-user-env", "python3", "/usr/local/lib/dam/import-settings.py", "--user-only"],
         ])
         self.assertEqual(commands[-1][:8], ["exec", "-T", "--user", "node", "dev", "dam-user-env", "bash", "-c"])
         self.assertEqual(sum(event["kind"] == "prepare" for event in self.events), 1)
@@ -383,7 +384,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assertRegex(compose_text, r"source:\s*['\"]?\$\{DAM_WORKSPACE_PATH(?:[}:])")
 
     def test_sync_imports_settings_only_for_running_selected_project(self):
-        for running, expected in (("0", ["ps"]), ("1", ["ps", "exec", "exec"])):
+        for running, expected in (("0", ["ps"]), ("1", ["ps", "exec", "exec", "exec"])):
             with self.subTest(running=running):
                 result = self.run_dam("ws2", "sync", extra_env={"DAM_TEST_RUNNING": running})
                 self.assert_success(result)
@@ -391,7 +392,7 @@ class DamLauncherTests(unittest.TestCase):
                 self.assertEqual([self.command(event)[0] for event in self.docker_calls], expected)
                 if running == "1":
                     self.assertEqual(self.command(self.docker_calls[1]), [
-                        "exec", "-T", "--user", "node", "dev", "dam-user-env", "python3", "/usr/local/lib/dam/import-settings.py",
+                        "exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/import-settings.py", "--system-only",
                     ])
 
 
