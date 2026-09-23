@@ -262,11 +262,12 @@ class DamLauncherTests(unittest.TestCase):
         self.assert_selected_workspace(self.workspaces_root / "a")
         self.assertTrue((self.workspaces_root / "a").is_dir())
         commands = [self.command(event) for event in self.docker_calls]
-        self.assertEqual(commands, [
+        self.assertEqual(commands[:-1], [
             ["build", "--pull", "--no-cache"],
             ["up", "-d", "--wait", "dev"],
             ["exec", "-T", "dev", "python3", "/usr/local/lib/dam/import-settings.py"],
         ])
+        self.assertEqual(commands[-1][:5], ["exec", "-T", "dev", "bash", "-c"])
         self.assertEqual(sum(event["kind"] == "prepare" for event in self.events), 1)
         self.assertEqual(self.events[0]["kind"], "prepare")
 
@@ -382,7 +383,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assertRegex(compose_text, r"source:\s*['\"]?\$\{DAM_WORKSPACE_PATH(?:[}:])")
 
     def test_sync_imports_settings_only_for_running_selected_project(self):
-        for running, expected in (("0", ["ps"]), ("1", ["ps", "exec"])):
+        for running, expected in (("0", ["ps"]), ("1", ["ps", "exec", "exec"])):
             with self.subTest(running=running):
                 result = self.run_dam("ws2", "sync", extra_env={"DAM_TEST_RUNNING": running})
                 self.assert_success(result)

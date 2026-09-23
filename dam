@@ -94,9 +94,18 @@ prepare() {
   python3 "$dam_root/docker/prepare-settings.py"
 }
 
+import_settings() {
+  "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
+  "${compose[@]}" exec -T dev bash -c '
+    if ! grep -qxF "alias vi=nvim" "$HOME/.bashrc" 2>/dev/null; then
+      printf "\nalias vi=nvim\n" >> "$HOME/.bashrc"
+    fi
+  '
+}
+
 up() {
   "${compose[@]}" up -d --wait dev
-  "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
+  import_settings
 }
 
 start() {
@@ -133,7 +142,7 @@ case "$action" in
     prepare
     dam_running="$("${compose[@]}" ps --status running -q dev)"
     if [[ -n "$dam_running" ]]; then
-      "${compose[@]}" exec -T dev python3 /usr/local/lib/dam/import-settings.py
+      import_settings
     fi
     ;;
   build)

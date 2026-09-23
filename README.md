@@ -34,6 +34,8 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 ./dam workspace-amd build
 이름을 생략하면 워크스페이스 생성이나 설정 동기화, 컨테이너 시작 없이 오류로 종료합니다.
 
 `build`는 이미지를 빌드한 뒤 해당 워크스페이스의 컨테이너를 백그라운드에서 실행합니다.
+`build`와 실행 중인 컨테이너의 `sync`는 컨테이너 `~/.bashrc`에 `alias vi=nvim`도 중복 없이 추가합니다.
+새 셸부터 적용되며, 이미 열린 셸에서는 `source ~/.bashrc`로 반영합니다.
 
 tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연결할 수 있습니다.
 컨테이너가 재시작되면 tmux 프로세스/세션은 종료되지만 파일과 인증 정보는 유지됩니다.
