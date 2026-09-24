@@ -3,15 +3,13 @@ services:
     build:
       context: .
     init: true
-    user: node
+    user: root
     working_dir: /workspace
     stdin_open: true
     tty: true
     environment:
       TERM: xterm-256color
       COLORTERM: truecolor
-      GH_CONFIG_DIR: /home/node/.config/gh
-      GLAB_CONFIG_DIR: /home/node/.config/glab-cli
     volumes:
       - type: bind
         source: ${DAM_WORKSPACE_PATH:?Use ./dam WORKSPACE COMMAND to select a workspace}
@@ -32,10 +30,15 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
-    security_opt:
-      - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETUID
+      - SETGID
 
 volumes:
   dev-home:

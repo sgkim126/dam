@@ -68,7 +68,7 @@ class DamLauncherTests(unittest.TestCase):
                     sys.exit(19)
                 if action == "ps" and os.environ.get("DAM_TEST_RUNNING") == "1":
                     print("fake-running-container")
-                if args[-3:] == ["dev", "tmux", "list-sessions"]:
+                if args[-3:] == ["dam-user-env", "tmux", "list-sessions"]:
                     sys.stdout.write(os.environ.get("DAM_TEST_SESSION_LIST", ""))
                     sys.stderr.write(os.environ.get("DAM_TEST_SESSION_ERROR", ""))
                     sys.exit(int(os.environ.get("DAM_TEST_SESSION_EXIT", "0")))
@@ -166,7 +166,7 @@ class DamLauncherTests(unittest.TestCase):
         result = self.run_dam("work")
         self.assert_success(result)
         self.assert_selected_workspace(self.workspaces_root / "work")
-        self.assertEqual(self.command(self.docker_calls[-1]), ["exec", "dev", "bash", "-l"])
+        self.assertEqual(self.command(self.docker_calls[-1]), ["exec", "--user", "node", "dev", "dam-user-env", "bash", "-l"])
 
     def test_workspace_paths_are_rejected_before_side_effects(self):
         for argument in (
@@ -201,7 +201,7 @@ class DamLauncherTests(unittest.TestCase):
                 if exists:
                     target.mkdir()
                 alias = self.workspaces_root / f"alias-{exists}"
-                alias.symlink_to(target, target_is_directory=True)
+                alias.symlink_to(target)
                 result = self.run_dam(alias.name, "build")
                 self.assertNotEqual(result.returncode, 0)
                 self.assertTrue(result.stderr)
@@ -262,12 +262,12 @@ class DamLauncherTests(unittest.TestCase):
         self.assert_selected_workspace(self.workspaces_root / "a")
         self.assertTrue((self.workspaces_root / "a").is_dir())
         commands = [self.command(event) for event in self.docker_calls]
-        self.assertEqual(commands[:-1], [
+        self.assertEqual(commands, [
             ["build", "--pull", "--no-cache"],
             ["up", "-d", "--wait", "dev"],
-            ["exec", "-T", "dev", "python3", "/usr/local/lib/dam/import-settings.py"],
+            ["exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/import-settings.py", "--system-only"],
+            ["exec", "-T", "--user", "node", "dev", "dam-user-env", "python3", "/usr/local/lib/dam/import-settings.py", "--user-only"],
         ])
-        self.assertEqual(commands[-1][:5], ["exec", "-T", "dev", "bash", "-c"])
         self.assertEqual(sum(event["kind"] == "prepare" for event in self.events), 1)
         self.assertEqual(self.events[0]["kind"], "prepare")
 
@@ -281,7 +281,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assert_success(result)
         self.assert_selected_workspace(self.workspaces_root / "ws2")
         self.assertEqual(self.command(self.docker_calls[-1]), [
-            "exec", "dev", "tmux", "new-session", "-A", "-s", "coding",
+            "exec", "--user", "node", "dev", "dam-user-env", "tmux", "new-session", "-A", "-s", "coding",
         ])
 
     def test_named_tmux_sessions_share_workspace_and_preserve_arguments(self):
@@ -298,7 +298,7 @@ class DamLauncherTests(unittest.TestCase):
                 self.assert_success(result)
                 projects.add(self.assert_selected_workspace(workspace))
                 self.assertEqual(self.command(self.docker_calls[-1]), [
-                    "exec", "dev", "tmux", "new-session", "-A", "-s", session,
+                    "exec", "--user", "node", "dev", "dam-user-env", "tmux", "new-session", "-A", "-s", session,
                 ])
         self.assertEqual(len(projects), 1)
 
@@ -315,7 +315,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual(self.events, self.docker_calls)
         self.assertEqual([self.command(event) for event in self.docker_calls], [
             ["ps", "--status", "running", "-q", "dev"],
-            ["exec", "-T", "dev", "tmux", "list-sessions"],
+            ["exec", "-T", "--user", "node", "dev", "dam-user-env", "tmux", "list-sessions"],
         ])
         self.assertFalse((self.workspaces_root / "personal").exists())
 
@@ -358,7 +358,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assert_success(result)
         self.assert_selected_workspace(self.workspaces_root / "ws2")
         self.assertEqual(self.command(self.docker_calls[-1]), [
-            "exec", "-T", "dev", "printf", "%s", "argument with spaces", "$literal",
+            "exec", "-T", "--user", "node", "dev", "dam-user-env", "printf", "%s", "argument with spaces", "$literal",
         ])
 
     def test_down_targets_only_selected_project_without_preparing_settings(self):
@@ -389,6 +389,10 @@ class DamLauncherTests(unittest.TestCase):
                 self.assert_success(result)
                 self.assert_selected_workspace(self.workspaces_root / "ws2")
                 self.assertEqual([self.command(event)[0] for event in self.docker_calls], expected)
+                if running == "1":
+                    self.assertEqual(self.command(self.docker_calls[1]), [
+                        "exec", "-T", "--user", "root", "dev", "python3", "/usr/local/lib/dam/import-settings.py", "--system-only",
+                    ])
 
 
 if __name__ == "__main__":

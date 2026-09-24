@@ -4,3 +4,9 @@
 !docker/import-settings.py
 !docker/prepare-settings.py
 !docker/entrypoint.sh
+!docker/workspace.py
+!docker/profile.sh
+!docker/user-env.sh
+!docker/su.pam
+!docker/su-l.pam
+!docker/su-env.conf

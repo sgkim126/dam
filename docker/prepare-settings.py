@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import datetime
 import fcntl
 import json
@@ -12,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import tomllib
 
@@ -183,14 +183,9 @@ def prepare(host_home: Path, destination: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host-home", type=Path, default=Path.home())
-    parser.add_argument(
-        "--destination", type=Path,
-        default=Path(__file__).resolve().parent.parent / ".host-settings",
-    )
-    args = parser.parse_args()
-    prepare(args.host_home, args.destination)
+    if sys.argv[1:]:
+        sys.exit("Usage: prepare-settings.py")
+    prepare(Path.home(), Path(__file__).resolve().parent.parent / ".host-settings")
 
 
 if __name__ == "__main__":
