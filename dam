@@ -7,8 +7,9 @@ usage() {
   cat <<'USAGE'
 Usage: ./dam WORKSPACE [shell|tmux SESSION|sessions|exec COMMAND...|user add USER|sync|build|config|stop|down|ps|logs]
 
-WORKSPACE is a directory name under workspaces/ next to this script.
+WORKSPACE is a directory name under the current working directory.
 .host-settings is reserved for shared host settings.
+Run all commands for a workspace from the same parent directory.
 The default action is shell. build builds the image and starts the container.
 tmux requires SESSION and creates or attaches to that session.
 sessions lists tmux sessions without starting the container.
@@ -69,8 +70,8 @@ case "$action" in
   *) usage >&2; exit 2 ;;
 esac
 
-# Resolve the workspace path and derive its Docker Compose project name.
-dam_identity="$(python3 - "$dam_workspace_arg" "$dam_root" <<'PY'
+# Resolve the workspace from the caller's directory before changing to dam_root.
+dam_identity="$(python3 - "$dam_workspace_arg" <<'PY'
 import hashlib
 from pathlib import Path
 import re
@@ -82,7 +83,7 @@ try:
         raise ValueError("workspace must be a directory name, not a path")
     if name.casefold() == ".host-settings":
         raise ValueError(".host-settings is reserved for shared host settings")
-    workspace = (Path(sys.argv[2]) / "workspaces").resolve() / name
+    workspace = Path.cwd().resolve() / name
     if any(character in str(workspace) for character in ("\n", "\r")):
         raise ValueError("workspace paths cannot contain line breaks")
     if workspace.is_symlink():

@@ -24,7 +24,8 @@ class DamLauncherTests(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve()
         self.launcher_root = self.root / "launcher"
         self.launcher_root.mkdir()
-        self.workspaces_root = self.launcher_root / "workspaces"
+        self.workspaces_root = self.root / "caller"
+        self.workspaces_root.mkdir()
         self.launcher = self.launcher_root / "dam"
         shutil.copy2(SOURCE_ROOT / "dam", self.launcher)
         shutil.copy2(SOURCE_ROOT / "compose.yaml", self.launcher_root / "compose.yaml")
@@ -95,13 +96,13 @@ class DamLauncherTests(unittest.TestCase):
         self.env.pop("DAM_WORKSPACE_PATH", None)
         self.env.pop("DAM_HOST_SETTINGS_PATH", None)
 
-    def run_dam(self, *args, cwd=None, extra_env=None):
+    def run_dam(self, *args, cwd=None, extra_env=None, launcher=None):
         self.events_path.write_text("")
         env = dict(self.env)
         env.update(extra_env or {})
         result = subprocess.run(
-            [str(self.launcher), *map(str, args)],
-            cwd=cwd or self.launcher_root,
+            [str(launcher or self.launcher), *map(str, args)],
+            cwd=cwd or self.workspaces_root,
             env=env,
             capture_output=True,
             text=True,
@@ -237,14 +238,13 @@ class DamLauncherTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertTrue(result.stderr)
                 self.assertEqual(self.events, [])
-                self.assertFalse(self.workspaces_root.exists())
+                self.assertEqual(list(self.workspaces_root.iterdir()), [])
                 self.assertFalse((self.launcher_root / ".host-settings").exists())
                 self.assertFalse((self.launcher_root / "ws2").exists())
                 self.assertFalse((self.root / "absolute").exists())
                 self.assertFalse((self.root / "home" / "ws2").exists())
 
     def test_workspace_symlinks_are_rejected_before_side_effects(self):
-        self.workspaces_root.mkdir()
         for exists in (False, True):
             with self.subTest(target_exists=exists):
                 target = self.root / f"target-{exists}"
@@ -262,12 +262,19 @@ class DamLauncherTests(unittest.TestCase):
                     self.assertEqual(list(target.iterdir()), [])
 
     def test_workspace_selects_dedicated_project_and_home_volume(self):
-        workspace = self.workspaces_root / "ws2"
-        result = self.run_dam("ws2", "ps")
+        workspace = self.launcher_root / "workspaces" / "ws2"
+        workspace.mkdir(parents=True)
+        existing_file = workspace / "existing.txt"
+        existing_file.write_text("keep workspace data")
+
+        result = self.run_dam("ws2", "config", cwd=workspace.parent, launcher="../dam")
+
         self.assert_success(result)
         project = self.assert_selected_workspace(workspace)
         digest = hashlib.sha256(str(workspace.resolve()).encode()).hexdigest()[:12]
         self.assertEqual(project, "dam-ws2-" + digest)
+        self.assertIn(f"Project: {project}\n", result.stdout)
+        self.assertEqual(existing_file.read_text(), "keep workspace data")
         compose_text = (self.launcher_root / "compose.yaml").read_text()
         self.assertIn("source: dev-home", compose_text)
         self.assertIn("target: /home\n", compose_text)
@@ -283,19 +290,39 @@ class DamLauncherTests(unittest.TestCase):
             projects.add(project)
         self.assertEqual(len(projects), 3)
 
-    def test_named_workspace_uses_launcher_workspaces_regardless_of_cwd(self):
-        caller = self.root / "caller"
-        caller.mkdir()
+    def test_named_workspace_uses_cwd_and_separates_projects_by_parent(self):
+        other_parent = self.root / "other parent 작업공간"
+        other_parent.mkdir()
         projects = set()
-        for cwd in (self.launcher_root, caller):
+        for cwd in (self.workspaces_root, other_parent):
             with self.subTest(cwd=cwd):
                 result = self.run_dam("ws2", "config", cwd=cwd)
                 self.assert_success(result)
-                projects.add(self.assert_selected_workspace(self.workspaces_root / "ws2"))
-        self.assertEqual(len(projects), 1)
-        self.assertTrue((self.workspaces_root / "ws2").is_dir())
-        self.assertFalse((caller / "ws2").exists())
+                projects.add(self.assert_selected_workspace(cwd / "ws2"))
+                self.assertTrue((cwd / "ws2").is_dir())
+        self.assertEqual(len(projects), 2)
         self.assertFalse((self.launcher_root / "ws2").exists())
+        self.assertFalse((self.launcher_root / "workspaces").exists())
+
+    def test_same_workspace_reuses_project_across_launcher_installations(self):
+        other_launcher_root = self.root / "other-launcher"
+        shutil.copytree(self.launcher_root, other_launcher_root)
+        projects = set()
+
+        for launcher_root in (self.launcher_root, other_launcher_root):
+            with self.subTest(launcher_root=launcher_root):
+                result = self.run_dam("shared", "config", launcher=launcher_root / "dam")
+                self.assert_success(result)
+                projects.add(self.assert_selected_workspace(self.workspaces_root / "shared"))
+                for event in self.docker_calls:
+                    args = event["args"]
+                    self.assertEqual(args[args.index("--project-directory") + 1], str(launcher_root))
+                    self.assertEqual(args[args.index("-f") + 1], str(launcher_root / "compose.yaml"))
+                self.assertFalse((launcher_root / ".host-settings").exists())
+                self.assertTrue((self.workspaces_root / ".host-settings").is_dir())
+                self.assertFalse((launcher_root / "shared").exists())
+
+        self.assertEqual(len(projects), 1)
 
     def test_ps_and_stop_do_not_create_workspace_or_settings(self):
         for action in ("ps", "stop"):
@@ -304,7 +331,8 @@ class DamLauncherTests(unittest.TestCase):
                 self.assert_success(result)
                 self.assert_selected_workspace(self.workspaces_root / "unused-workspace")
                 self.assertEqual(self.events, self.docker_calls)
-                self.assertFalse(self.workspaces_root.exists())
+                self.assertEqual(list(self.workspaces_root.iterdir()), [])
+                self.assertFalse((self.launcher_root / "workspaces").exists())
                 self.assertFalse((self.launcher_root / ".host-settings").exists())
 
     def test_workspace_names_preserve_spaces_unicode_dots_and_case(self):
@@ -388,7 +416,8 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual([self.command(event) for event in self.docker_calls], [
             ["ps", "--status", "running", "-q", "dev"],
         ])
-        self.assertFalse(self.workspaces_root.exists())
+        self.assertEqual(list(self.workspaces_root.iterdir()), [])
+        self.assertFalse((self.launcher_root / "workspaces").exists())
         self.assertFalse((self.launcher_root / ".host-settings").exists())
 
     def test_sessions_preserves_tmux_error_and_exit_status(self):
@@ -429,7 +458,8 @@ class DamLauncherTests(unittest.TestCase):
         self.assert_selected_workspace(self.workspaces_root / "ws2")
         self.assertEqual(len(self.events), 1)
         self.assertEqual(self.command(self.docker_calls[0]), ["down", "--remove-orphans"])
-        self.assertFalse(self.workspaces_root.exists())
+        self.assertEqual(list(self.workspaces_root.iterdir()), [])
+        self.assertFalse((self.launcher_root / "workspaces").exists())
         self.assertFalse((self.launcher_root / ".host-settings").exists())
 
     def test_logs_flags_are_passed_through(self):
@@ -438,7 +468,8 @@ class DamLauncherTests(unittest.TestCase):
         self.assert_selected_workspace(self.workspaces_root / "ws2")
         self.assertEqual(len(self.events), 1)
         self.assertEqual(self.command(self.docker_calls[0]), ["logs", "--tail", "25"])
-        self.assertFalse(self.workspaces_root.exists())
+        self.assertEqual(list(self.workspaces_root.iterdir()), [])
+        self.assertFalse((self.launcher_root / "workspaces").exists())
         self.assertFalse((self.launcher_root / ".host-settings").exists())
 
     def test_config_receives_workspace_environment_and_uses_dynamic_bind(self):
