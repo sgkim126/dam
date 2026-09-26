@@ -8,7 +8,7 @@ Apple Silicon(arm64)과 Intel/AMD(amd64)를 지원합니다.
 ## 처음 실행
 호스트에 Linux 컨테이너를 실행할 수 있는 Docker 엔진, Bash, Docker CLI, Docker Compose(`docker compose`), Python 3.11 이상이 필요합니다.
 명령은 현재 Docker CLI의 연결 설정을 사용합니다.
-Docker 엔진에서 워크스페이스와 `.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
+Docker 엔진에서 워크스페이스와 `dam/workspaces/.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
 
 ```bash
 docker info
@@ -67,6 +67,7 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 예를 들어 `./dam ws3 build`는 `dam/workspaces/ws3`를 사용합니다.
 다른 디렉토리에서 스크립트를 호출해도 같은 위치를 사용합니다.
 디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `user add`, `sync`, `config` 실행 시 생성합니다.
+`.host-settings`는 공통 설정용으로 예약되어 있어 대소문자와 관계없이 워크스페이스 이름으로 사용할 수 없습니다.
 `workspaces/`는 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
 
 워크스페이스 디렉토리의 정규화한 절대경로를 기준으로 `dam-<폴더이름>-<경로해시>`라는 Compose 프로젝트 이름을 생성합니다.
@@ -76,7 +77,7 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 
 홈 볼륨 이름은 `<프로젝트 이름>_dev-home`이며 `/home`에 연결합니다.
 이 볼륨에 기본 계정(`node`)을 포함한 모든 사용자의 홈과 계정 등록 정보를 보관합니다.
-`./dam WORKSPACE config`로 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
+`./dam WORKSPACE config`로 워크스페이스와 공유 설정 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
 
 ## 사용자 추가와 전환
 
@@ -228,7 +229,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 
 호스트의 Codex `auth.json`, 대화 기록, gh/glab 설정, `.gitconfig`, `.ssh`, SSH agent, Docker 소켓은 연결하지 않습니다.
 호스트의 인증 토큰 환경변수도 전달하지 않습니다.
-공유 설정은 `.host-settings/`에 생성되며 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
+공유 설정 사본은 `dam` 설치 디렉토리의 `workspaces/.host-settings/`에 생성되며, 같은 `workspaces/` 아래의 워크스페이스들이 공유합니다.
 컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한과 계정을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
 런처의 셸과 명령도 항상 `node`로 실행합니다.
 파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.

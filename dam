@@ -8,6 +8,7 @@ usage() {
 Usage: ./dam WORKSPACE [shell|tmux SESSION|sessions|exec COMMAND...|user add USER|sync|build|config|stop|down|ps|logs]
 
 WORKSPACE is a directory name under workspaces/ next to this script.
+.host-settings is reserved for shared host settings.
 The default action is shell. build builds the image and starts the container.
 tmux requires SESSION and creates or attaches to that session.
 sessions lists tmux sessions without starting the container.
@@ -79,6 +80,8 @@ try:
     name = sys.argv[1]
     if name in (".", "..") or "/" in name or "\\" in name:
         raise ValueError("workspace must be a directory name, not a path")
+    if name.casefold() == ".host-settings":
+        raise ValueError(".host-settings is reserved for shared host settings")
     workspace = (Path(sys.argv[2]) / "workspaces").resolve() / name
     if any(character in str(workspace) for character in ("\n", "\r")):
         raise ValueError("workspace paths cannot contain line breaks")
@@ -99,12 +102,13 @@ PY
 )"
 dam_project="${dam_identity%%$'\n'*}"
 export DAM_WORKSPACE_PATH="${dam_identity#*$'\n'}"
+export DAM_HOST_SETTINGS_PATH="${DAM_WORKSPACE_PATH%/*}/.host-settings"
 cd "$dam_root"
 compose=(docker compose --project-name "$dam_project" --project-directory "$dam_root" -f "$dam_root/compose.yaml")
 
 prepare() {
   mkdir -p -- "$DAM_WORKSPACE_PATH"
-  python3 "$dam_root/docker/prepare-settings.py"
+  python3 "$dam_root/docker/prepare-settings.py" "$DAM_HOST_SETTINGS_PATH"
 }
 
 import_settings() {
@@ -169,8 +173,8 @@ case "$action" in
   config)
     prepare
     "${compose[@]}" config --quiet
-    printf 'Workspace: %s\nProject: %s\nHome volume: %s_dev-home\nCompose configuration is valid.\n' \
-      "$DAM_WORKSPACE_PATH" "$dam_project" "$dam_project"
+    printf 'Workspace: %s\nHost settings: %s\nProject: %s\nHome volume: %s_dev-home\nCompose configuration is valid.\n' \
+      "$DAM_WORKSPACE_PATH" "$DAM_HOST_SETTINGS_PATH" "$dam_project" "$dam_project"
     ;;
   stop|down|ps|logs)
     exec "${compose[@]}" "$action" "$@"

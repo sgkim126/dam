@@ -25,12 +25,17 @@ CREDENTIAL_KEY = re.compile(
 )
 
 
-def copy_asset(source: Path, target: Path, ancestors: frozenset = frozenset()) -> None:
+def copy_asset(
+    source: Path, target: Path, ancestors: frozenset = frozenset(),
+    *, excluded: frozenset = frozenset(),
+) -> None:
     """Dereference host symlinks, including skills linked outside the host home."""
     if not source.exists():
         return
     info = source.stat()
     identity = (info.st_dev, info.st_ino)
+    if identity in excluded:
+        return
     if stat.S_ISDIR(info.st_mode):
         if identity in ancestors:
             raise ValueError(f"Symlink cycle in settings: {source}")
@@ -41,7 +46,7 @@ def copy_asset(source: Path, target: Path, ancestors: frozenset = frozenset()) -
                 continue
             if child.name.endswith((".pyc", ".pyo", ".log")):
                 continue
-            copy_asset(child, target / child.name, ancestors | {identity})
+            copy_asset(child, target / child.name, ancestors | {identity}, excluded=excluded)
     elif stat.S_ISREG(info.st_mode):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
@@ -144,6 +149,9 @@ def prepare(host_home: Path, destination: Path) -> None:
             raise ValueError("Refusing to modify a nonempty directory without the staging marker")
     destination.mkdir(parents=True, exist_ok=True)
     destination.chmod(0o755)
+    # Staging may be inside a copied settings tree, including through a symlink.
+    destination_info = destination.stat()
+    excluded = frozenset({(destination_info.st_dev, destination_info.st_ino)})
     marker = destination / MARKER
     if marker.is_symlink():
         raise ValueError("The staging marker must not be a symlink")
@@ -159,18 +167,18 @@ def prepare(host_home: Path, destination: Path) -> None:
         if skills.is_dir():
             for skill in skills.iterdir():
                 if skill.name != ".system":
-                    copy_asset(skill, pending / "codex/skills" / skill.name)
+                    copy_asset(skill, pending / "codex/skills" / skill.name, excluded=excluded)
         for name in ("AGENTS.md", "rules", "agents"):
-            copy_asset(host_home / ".codex" / name, pending / "codex" / name)
+            copy_asset(host_home / ".codex" / name, pending / "codex" / name, excluded=excluded)
         for source, target in (
             (".agents/skills", "agents/skills"),
             (".tmux.conf", "tmux.conf"),
             (".config/nvim", "nvim"),
             (".vimrc", "vimrc"),
         ):
-            copy_asset(host_home / source, pending / target)
+            copy_asset(host_home / source, pending / target, excluded=excluded)
         for name in ("autoload", "config", "colors", "after", "plugins.vim"):
-            copy_asset(host_home / ".vim" / name, pending / "vim" / name)
+            copy_asset(host_home / ".vim" / name, pending / "vim" / name, excluded=excluded)
         for name in MANAGED_NAMES:
             current = destination / name
             replacement = pending / name
@@ -183,9 +191,9 @@ def prepare(host_home: Path, destination: Path) -> None:
 
 
 def main() -> None:
-    if sys.argv[1:]:
-        sys.exit("Usage: prepare-settings.py")
-    prepare(Path.home(), Path(__file__).resolve().parent.parent / ".host-settings")
+    if len(sys.argv) != 2 or not Path(sys.argv[1]).is_absolute():
+        sys.exit("Usage: prepare-settings.py ABSOLUTE_DESTINATION")
+    prepare(Path.home(), Path(sys.argv[1]))
 
 
 if __name__ == "__main__":

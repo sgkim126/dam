@@ -17,7 +17,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ./.host-settings
+        source: ${DAM_HOST_SETTINGS_PATH:?Use ./dam WORKSPACE COMMAND to select host settings}
         target: /mnt/host-settings
         read_only: true
         bind:
