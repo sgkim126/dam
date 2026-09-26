@@ -8,7 +8,7 @@ Apple Silicon(arm64)과 Intel/AMD(amd64)를 지원합니다.
 ## 처음 실행
 호스트에 Linux 컨테이너를 실행할 수 있는 Docker 엔진, Bash, Docker CLI, Docker Compose(`docker compose`), Python 3.11 이상이 필요합니다.
 명령은 현재 Docker CLI의 연결 설정을 사용합니다.
-Docker 엔진에서 워크스페이스와 `.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
+Docker 엔진에서 워크스페이스와 `${pwd}/.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
 
 ```bash
 docker info
@@ -27,7 +27,7 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 ./dam workspace-amd build
 ```
 
 첫 인자는 워크스페이스 이름입니다.
-`./dam ws1`는 `dam/workspaces/ws1`를 사용하는 컨테이너의 일반 셸로 들어갑니다.
+`./dam ws1`는 실행한 현재 디렉토리 아래의 `ws1`을 사용하는 컨테이너의 일반 셸로 들어갑니다.
 
 `./dam ws1 tmux coding`은 `coding` tmux 세션을 만들거나 다시 연결합니다.
 `./dam WORKSPACE tmux SESSION`의 세션 이름은 필수입니다.
@@ -57,26 +57,38 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 ## 여러 워크스페이스
 
 ```bash
-./dam ws1 build               # dam/workspaces/ws1를 /workspace로 연결하고 빌드
+./dam ws1 build               # 현재 디렉토리의 ws1을 /workspace로 연결하고 빌드
 ./dam ws1 tmux coding         # ws1 컨테이너의 coding 세션에 연결
-./dam ws2 build               # dam/workspaces/ws2용 별도 컨테이너와 홈 볼륨 생성
+./dam ws2 build               # 현재 디렉토리의 ws2용 별도 컨테이너와 홈 볼륨 생성
 ./dam "project with spaces"   # 이름에 공백이 있으면 따옴표 사용
 ```
 
-워크스페이스는 `dam` 스크립트가 있는 디렉토리의 **`workspaces/<이름>`**에 생성합니다.
-예를 들어 `./dam ws3 build`는 `dam/workspaces/ws3`를 사용합니다.
-다른 디렉토리에서 스크립트를 호출해도 같은 위치를 사용합니다.
+워크스페이스는 **`<실행한 현재 디렉토리>/<이름>`**을 사용합니다.
+예를 들어 `/data/projects`에서 `/path/to/dam ws3 build`를 실행하면 `/data/projects/ws3`를 사용합니다.
 디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `user add`, `sync`, `config` 실행 시 생성합니다.
-`workspaces/`는 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
+`.host-settings`는 공통 설정용으로 예약되어 있어 대소문자와 관계없이 워크스페이스 이름으로 사용할 수 없습니다.
+
+기존 `dam/workspaces/<이름>` 배치를 사용하려면 `dam` 스크립트가 있는 디렉토리에서 다음처럼 실행합니다.
+
+```bash
+mkdir -p workspaces
+cd workspaces
+../dam ws1 build
+../dam ws1 tmux coding
+```
+
+이렇게 실행하면 공통 설정도 `workspaces/.host-settings/`에 생성됩니다.
+Compose 파일과 이미지 빌드 위치는 계속 `dam` 스크립트가 있는 디렉토리를 기준으로 합니다.
 
 워크스페이스 디렉토리의 정규화한 절대경로를 기준으로 `dam-<폴더이름>-<경로해시>`라는 Compose 프로젝트 이름을 생성합니다.
-서로 다른 위치에 설치한 `dam`은 같은 워크스페이스 이름을 사용해도 별도 컨테이너를 사용합니다.
+실행 위치가 다르면 같은 워크스페이스 이름도 별도 컨테이너와 홈 볼륨을 사용합니다.
+같은 워크스페이스 절대경로를 선택하면 `dam` 설치 위치가 달라도 같은 Compose 프로젝트를 사용합니다.
 워크스페이스마다 홈 볼륨, Codex 기록, gh/glab 로그인과 tmux 세션이 구분되므로 처음 사용할 때 해당 컨테이너에서 로그인합니다.
 호스트에서 가져오는 공통 설정은 동일합니다.
 
 홈 볼륨 이름은 `<프로젝트 이름>_dev-home`이며 `/home`에 연결합니다.
 이 볼륨에 기본 계정(`node`)을 포함한 모든 사용자의 홈과 계정 등록 정보를 보관합니다.
-`./dam WORKSPACE config`로 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
+`./dam WORKSPACE config`로 워크스페이스와 공유 설정 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
 
 ## 사용자 추가와 전환
 
@@ -167,7 +179,7 @@ codex
 nvim .
 ```
 
-`/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `dam/workspaces/ws1`)를 연결한 bind mount입니다.
+`/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `<실행한 현재 디렉토리>/ws1`)를 연결한 bind mount입니다.
 작업할 디렉토리에서 Codex를 실행하면 되고, 여러 작업을 동시에 진행할 때는 tmux 창을 나누거나 이름이 다른 세션을 사용하면 됩니다.
 도구는 현재 Linux 사용자의 홈과 CLI 로그인을 사용합니다.
 
@@ -197,8 +209,8 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 
 | 항목 | 호스트 경로 | 컨테이너 경로 | 동작 |
 | --- | --- | --- | --- |
-| 작업 공간 | `dam/workspaces/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
-| 워크스페이스 Bash 설정 | `dam/workspaces/{WORKSPACE}/.bashrc` | `/workspace/.bashrc` | 읽기/쓰기 공유, 존재하면 source, `sync`는 생성하거나 수정하지 않음 |
+| 작업 공간 | `${pwd}/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
+| 워크스페이스 Bash 설정 | `${pwd}/{WORKSPACE}/.bashrc` | `/workspace/.bashrc` | 읽기/쓰기 공유, 존재하면 source, `sync`는 생성하거나 수정하지 않음 |
 | Codex 공통 설정 | `~/.codex/config.toml` | `/etc/codex/config.toml` | 호스트에서 단방향 동기화 |
 | Codex 사용자 스킬 | `~/.codex/skills`, `~/.agents/skills` | `/home/node/.codex/skills`, `/home/node/.agents/skills` | 사용자 스킬만 복사한 뒤 읽기 전용으로 연결 |
 | Codex 선택적 rules/agents/AGENTS.md | `~/.codex/rules`, `~/.codex/agents`, `~/.codex/AGENTS.md` | `/home/node/.codex/rules`, `/home/node/.codex/agents`, `/home/node/.codex/AGENTS.md` | 존재하는 항목을 복사한 뒤 읽기 전용으로 연결 |
@@ -228,7 +240,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 
 호스트의 Codex `auth.json`, 대화 기록, gh/glab 설정, `.gitconfig`, `.ssh`, SSH agent, Docker 소켓은 연결하지 않습니다.
 호스트의 인증 토큰 환경변수도 전달하지 않습니다.
-공유 설정은 `.host-settings/`에 생성되며 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
+공유 설정 사본은 `${pwd}/.host-settings/`에 생성되며, 같은 상위 디렉토리의 워크스페이스들이 공유합니다.
 컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한과 계정을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
 런처의 셸과 명령도 항상 `node`로 실행합니다.
 파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.
@@ -256,6 +268,8 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ```
 
 명령은 선택한 워크스페이스의 Compose 프로젝트에만 적용됩니다.
+`stop`, `down`, `sessions` 같은 관리 명령도 워크스페이스를 만들 때와 같은 상위 디렉토리에서 실행해야 같은 프로젝트를 선택합니다.
+예를 들어 `workspaces/`에서 `../dam ws1 build`로 시작했다면 같은 위치에서 `../dam ws1 stop`으로 중지합니다.
 `sessions`는 설정을 동기화하거나 중지된 컨테이너를 시작하지 않습니다.
 컨테이너가 실행 중이 아니면 세션을 조회할 수 없다는 안내를 출력하고, 실행 중이면 `tmux list-sessions` 결과를 출력합니다.
 실행 중인 컨테이너에 tmux 서버가 없으면 tmux의 기본 오류 메시지와 종료 상태를 반환합니다.

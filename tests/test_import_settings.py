@@ -228,16 +228,77 @@ config_file = "/Users/host/private/reviewer.toml"
                 self.assertIn("unrecognized arguments", stderr.getvalue())
                 importer.assert_not_called()
 
-    def test_host_staging_rejects_arguments_before_copying(self):
-        for option in ("--host-home", "--destination"):
+    def run_host_staging(self, destination, home=None):
+        return subprocess.run(
+            [sys.executable, str(SOURCE_ROOT / "docker/prepare-settings.py"), str(destination)],
+            env=dict(os.environ, HOME=str(home or self.home)),
+            capture_output=True, text=True, timeout=10,
+        )
+
+    def test_host_staging_requires_one_absolute_destination_before_copying(self):
+        for args in (
+            (), ("",), ("relative/path",), (str(self.root), "extra"),
+        ):
             with (
-                self.subTest(option=option),
-                mock.patch.object(sys, "argv", ["prepare-settings.py", option, str(self.root)]),
+                self.subTest(args=args),
+                mock.patch.object(sys, "argv", ["prepare-settings.py", *args]),
                 mock.patch.object(settings._shared, "prepare") as prepare,
             ):
                 with self.assertRaisesRegex(SystemExit, "Usage: prepare-settings.py"):
                     settings._shared.main()
                 prepare.assert_not_called()
+
+    def test_host_staging_cli_refreshes_explicit_destination_without_replacing_directory(self):
+        destination = self.root / "caller settings 설정" / ".host-settings"
+        self.write(self.home / ".tmux.conf", "first settings")
+        result = self.run_host_staging(destination)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        identity = (destination.stat().st_dev, destination.stat().st_ino)
+        self.assertEqual((destination / "tmux.conf").read_text(), "first settings")
+
+        self.write(self.home / ".tmux.conf", "updated settings")
+        result = self.run_host_staging(destination)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((destination.stat().st_dev, destination.stat().st_ino), identity)
+        self.assertEqual((destination / "tmux.conf").read_text(), "updated settings")
+
+    def test_host_staging_cli_preserves_unmanaged_directory_and_symlink_target(self):
+        destination = self.root / "caller" / ".host-settings"
+        sentinel = destination / "keep.txt"
+        self.write(sentinel, "existing data")
+        result = self.run_host_staging(destination)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("without the staging marker", result.stderr)
+        self.assertEqual(sentinel.read_text(), "existing data")
+        self.assertEqual(list(destination.iterdir()), [sentinel])
+
+        alias = self.root / "settings-alias"
+        alias.symlink_to(destination)
+        result = self.run_host_staging(alias)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not be a symlink", result.stderr)
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual(sentinel.read_text(), "existing data")
+        self.assertEqual(list(destination.iterdir()), [sentinel])
+
+    def test_host_staging_inside_settings_source_does_not_copy_itself_or_its_alias(self):
+        for index, (source_name, asset, staged_root) in enumerate((
+            (".config/nvim", "init.lua", "nvim"),
+            (".codex/skills", "review/SKILL.md", "codex/skills"),
+        )):
+            with self.subTest(source=source_name):
+                home = self.root / f"nested-home-{index}"
+                source = home / source_name
+                self.write(source / asset, "host asset")
+                destination = source / ".host-settings"
+                destination.mkdir()
+                (source / "staging-alias").symlink_to(destination)
+                result = self.run_host_staging(destination, home=home)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                copied = destination / staged_root
+                self.assertEqual((copied / asset).read_text(), "host asset")
+                self.assertFalse((copied / ".host-settings").exists())
+                self.assertFalse((copied / "staging-alias").exists())
 
 
 if __name__ == "__main__":
