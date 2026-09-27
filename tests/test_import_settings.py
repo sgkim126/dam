@@ -85,6 +85,40 @@ config_file = "/Users/host/private/reviewer.toml"
         )
         self.assertIsNone(settings.shared_asset_path("/Users/a/.codex/skills/../auth.json", common))
 
+    def test_missing_host_config_still_enables_auto_review(self):
+        (self.source / "codex/config.toml").unlink()
+        self.run_import(system_only=True)
+        config = tomllib.loads(self.system_config.read_text())
+        self.assertEqual(config["approval_policy"], "on-request")
+        self.assertEqual(config["approvals_reviewer"], "auto_review")
+        self.assertEqual(config["sandbox_mode"], "workspace-write")
+
+    def test_container_approval_defaults_replace_host_mode_on_each_sync(self):
+        source = self.source / "codex/config.toml"
+        for permission in (
+            'sandbox_mode = "danger-full-access"',
+            'default_permissions = ":danger-full-access"',
+        ):
+            with self.subTest(permission=permission):
+                content = f'''model = "shared-model"
+approval_policy = "never"
+approvals_reviewer = "user"
+{permission}
+[profiles.manual]
+approval_policy = "on-request"
+approvals_reviewer = "user"
+'''
+                self.write(source, content)
+                self.run_import(system_only=True)
+                config = tomllib.loads(self.system_config.read_text())
+                self.assertEqual(config["approval_policy"], "on-request")
+                self.assertEqual(config["approvals_reviewer"], "auto_review")
+                self.assertEqual(config["sandbox_mode"], "workspace-write")
+                self.assertNotIn("default_permissions", config)
+                self.assertEqual(config["model"], "shared-model")
+                self.assertEqual(config["profiles"]["manual"]["approvals_reviewer"], "user")
+                self.assertEqual(source.read_text(), content)
+
     def test_system_only_never_creates_home_or_takes_user_lock(self):
         with mock.patch.object(settings.fcntl, "flock", side_effect=AssertionError("Unexpected home lock")):
             self.run_import(system_only=True)
@@ -99,7 +133,7 @@ config_file = "/Users/host/private/reviewer.toml"
 
     def test_user_only_preserves_local_state_and_never_writes_system(self):
         local_files = {
-            ".codex/config.toml": 'model = "alice-model"\n',
+            ".codex/config.toml": 'model = "alice-model"\napprovals_reviewer = "user"\n',
             ".codex/auth.json": '{"token": "alice-only"}\n',
             ".codex/history.jsonl": '{"history": "alice"}\n',
             ".codex/skills/.system/local/SKILL.md": "system skill",

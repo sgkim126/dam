@@ -245,6 +245,13 @@ Codex는 공통 설정을 시스템 설정 계층에서 읽습니다.
 공통 설정의 스킬/에이전트 경로는 `/mnt/host-settings`의 읽기 전용 자산을 참조하며, 특정 사용자의 홈에 종속되지 않습니다.
 시스템 설정은 root가 관리하고 사용자 설정 가져오기는 인증 정보, 기록, 개인 Codex 설정을 보존합니다.
 컨테이너 전용 변경과 프로젝트 신뢰 설정은 쓰기 가능한 `~/.codex/config.toml`에 저장되며 공통 설정보다 우선합니다.
+
+컨테이너의 Codex 기본 승인 모드는 **Approve for me — Only ask for actions detected as potentially unsafe**입니다.
+공통 설정을 가져올 때 호스트의 기본 승인 모드 대신 `approval_policy = "on-request"`, `approvals_reviewer = "auto_review"`, `sandbox_mode = "workspace-write"`를 적용합니다.
+호스트의 `default_permissions`는 `sandbox_mode`와 충돌하지 않도록 가져오지 않습니다.
+[자동 승인 검토](https://developers.openai.com/codex/sandboxing/auto-review)는 샌드박스 경계를 넘는 승인 요청을 검토하며, 위험하다고 판단한 작업은 사용자 확인이 필요할 수 있습니다.
+컨테이너의 개인 설정이나 선택한 프로필에 승인·권한 설정이 있으면 해당 설정이 우선합니다.
+
 호스트의 macOS 전용 MCP, 알림 명령, 데스크톱 설정, 프로젝트 신뢰 목록, 설치된 플러그인/마켓플레이스 설정은 가져오지 않습니다.
 CLI용 플러그인은 컨테이너에서 설치하세요.
 Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 사용자 스킬만 공유합니다.
