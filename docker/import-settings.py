@@ -95,6 +95,11 @@ def portable_codex_config(source: Path, asset_root: Path) -> tuple[str, list[str
                 elif mac_path(agent["config_file"]):
                     del agents[name]
                     skipped.append(f"agents.{name}.config_file")
+    # Container defaults use "Approve for me" regardless of the host's mode.
+    config["approval_policy"] = "on-request"
+    config["approvals_reviewer"] = "auto_review"
+    config.pop("default_permissions", None)  # Cannot coexist with sandbox_mode.
+    config["sandbox_mode"] = "workspace-write"
     config["cli_auth_credentials_store"] = "file"
     return _shared.serialize_config(config), sorted(skipped)
 
