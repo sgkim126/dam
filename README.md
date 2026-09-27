@@ -8,29 +8,32 @@ Apple Silicon(arm64)과 Intel/AMD(amd64)를 지원합니다.
 ## 처음 실행
 호스트에 Linux 컨테이너를 실행할 수 있는 Docker 엔진, Bash, Docker CLI, Docker Compose(`docker compose`), Python 3.11 이상이 필요합니다.
 명령은 현재 Docker CLI의 연결 설정을 사용합니다.
-Docker 엔진에서 워크스페이스와 `.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
+Docker 엔진에서 워크스페이스와 `<CWD>/.host-settings/` 경로에 접근할 수 있어야 하며, 원격 엔진에 로컬 경로가 자동으로 공유되지는 않습니다.
 
 ```bash
 docker info
-./dam {workspace} build
-./dam {workspace} tmux {session}
+mkdir -p ~/dam-workspaces
+chmod 700 ~/dam-workspaces
+cd ~/dam-workspaces
+/path/to/dam {workspace} build
+/path/to/dam {workspace} tmux {session}
 ```
 
 빌드 플랫폼을 지정하려면 사용할 아키텍처에 맞춰 다음 중 하나를 실행합니다.
 
 ```bash
 # ARM64로 빌드
-DOCKER_DEFAULT_PLATFORM=linux/arm64 ./dam workspace-arm build
+DOCKER_DEFAULT_PLATFORM=linux/arm64 /path/to/dam workspace-arm build
 
 # AMD64로 빌드
-DOCKER_DEFAULT_PLATFORM=linux/amd64 ./dam workspace-amd build
+DOCKER_DEFAULT_PLATFORM=linux/amd64 /path/to/dam workspace-amd build
 ```
 
 첫 인자는 워크스페이스 이름입니다.
-`./dam ws1`는 `dam/workspaces/ws1`를 사용하는 컨테이너의 일반 셸로 들어갑니다.
+`/path/to/dam ws1`는 실행한 현재 디렉토리 아래의 `ws1`을 사용하는 컨테이너의 일반 셸로 들어갑니다.
 
-`./dam ws1 tmux coding`은 `coding` tmux 세션을 만들거나 다시 연결합니다.
-`./dam WORKSPACE tmux SESSION`의 세션 이름은 필수입니다.
+`/path/to/dam ws1 tmux coding`은 `coding` tmux 세션을 만들거나 다시 연결합니다.
+`/path/to/dam WORKSPACE tmux SESSION`의 세션 이름은 필수입니다.
 이름을 생략하면 워크스페이스 생성이나 설정 동기화, 컨테이너 시작 없이 오류로 종료합니다.
 
 `build`는 이미지를 빌드한 뒤 해당 워크스페이스의 컨테이너를 백그라운드에서 실행합니다.
@@ -39,51 +42,72 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 ./dam workspace-amd build
 `/workspace/.bashrc`는 사용자가 직접 관리하며, `sync`는 이 파일을 생성하거나 수정하지 않습니다.
 새 셸부터 적용되며, 이미 열린 셸에서는 `source ~/.bashrc`로 반영합니다.
 
-tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연결할 수 있습니다.
+tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `/path/to/dam ws1 tmux coding`으로 연결할 수 있습니다.
 컨테이너가 재시작되면 tmux 프로세스/세션은 종료되지만 파일과 인증 정보는 유지됩니다.
 
 같은 워크스페이스에 여러 세션을 만들려면 각각 다른 이름을 지정합니다.
 같은 이름으로 실행하면 기존 세션에 다시 연결하며, 런처로 연 세션은 같은 컨테이너와 워크스페이스, `node` 홈, CLI 로그인을 사용합니다.
 
 ```bash
-./dam ws1 tmux coding         # coding 세션 생성 또는 연결
-./dam ws1 tmux review         # review 세션 생성 또는 연결
-./dam ws1 sessions            # ws1의 tmux 세션 목록
+/path/to/dam ws1 tmux coding         # coding 세션 생성 또는 연결
+/path/to/dam ws1 tmux review         # review 세션 생성 또는 연결
+/path/to/dam ws1 sessions            # ws1의 tmux 세션 목록
 ```
 
 지정하는 세션 이름은 비어 있거나 `.`, `:`, 줄바꿈을 포함할 수 없습니다.
-공백이 있는 이름은 `./dam ws1 tmux "code review"`처럼 따옴표로 감쌉니다.
+공백이 있는 이름은 `/path/to/dam ws1 tmux "code review"`처럼 따옴표로 감쌉니다.
 
 ## 여러 워크스페이스
 
 ```bash
-./dam ws1 build               # dam/workspaces/ws1를 /workspace로 연결하고 빌드
-./dam ws1 tmux coding         # ws1 컨테이너의 coding 세션에 연결
-./dam ws2 build               # dam/workspaces/ws2용 별도 컨테이너와 홈 볼륨 생성
-./dam "project with spaces"   # 이름에 공백이 있으면 따옴표 사용
+mkdir -p ~/dam-workspaces
+chmod 700 ~/dam-workspaces
+cd ~/dam-workspaces
+/path/to/dam ws1 build               # 현재 디렉토리의 ws1을 /workspace로 연결하고 빌드
+/path/to/dam ws1 tmux coding         # ws1 컨테이너의 coding 세션에 연결
+/path/to/dam ws2 build               # 현재 디렉토리의 ws2용 별도 컨테이너와 홈 볼륨 생성
+/path/to/dam "project with spaces"   # 이름에 공백이 있으면 따옴표 사용
 ```
 
-워크스페이스는 `dam` 스크립트가 있는 디렉토리의 **`workspaces/<이름>`**에 생성합니다.
-예를 들어 `./dam ws3 build`는 `dam/workspaces/ws3`를 사용합니다.
-다른 디렉토리에서 스크립트를 호출해도 같은 위치를 사용합니다.
+워크스페이스는 **`<실행한 현재 디렉토리>/<이름>`**을 사용합니다.
+예를 들어 `/data/projects`에서 `/path/to/dam ws3 build`를 실행하면 `/data/projects/ws3`를 사용합니다.
 디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `user add`, `sync`, `config` 실행 시 생성합니다.
-`workspaces/`는 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
+`.host-settings`는 공통 설정용으로 예약되어 있어 대소문자와 관계없이 워크스페이스 이름으로 사용할 수 없습니다.
+
+실행 디렉토리 자체가 현재 사용자 소유이며 그룹과 다른 사용자의 탐색(실행) 권한이 없어야 합니다.
+홈 등 상위 디렉토리가 비공개여도 실행 디렉토리에 그룹이나 다른 사용자의 탐색 권한이 있으면 거부합니다.
+이 조건을 만족하지 않는 공개 경로에서는 설정을 준비하는 명령을 워크스페이스 생성이나 설정 복사 전에 거부합니다.
+실행할 디렉토리에 직접 `chmod 700`으로 접근을 제한하세요. 런처는 기존 경로의 권한을 자동으로 변경하지 않습니다.
+
+기존 `dam/workspaces/<이름>` 배치를 사용하려면 `dam` 스크립트가 있는 디렉토리에서 다음처럼 실행합니다.
+
+```bash
+mkdir -p workspaces
+chmod 700 workspaces
+cd workspaces
+/path/to/dam ws1 build
+/path/to/dam ws1 tmux coding
+```
+
+이렇게 실행하면 공통 설정도 `workspaces/.host-settings/`에 생성됩니다.
+Compose 파일과 이미지 빌드 위치는 계속 `dam` 스크립트가 있는 디렉토리를 기준으로 합니다.
 
 워크스페이스 디렉토리의 정규화한 절대경로를 기준으로 `dam-<폴더이름>-<경로해시>`라는 Compose 프로젝트 이름을 생성합니다.
-서로 다른 위치에 설치한 `dam`은 같은 워크스페이스 이름을 사용해도 별도 컨테이너를 사용합니다.
+실행 위치가 다르면 같은 워크스페이스 이름도 별도 컨테이너와 홈 볼륨을 사용합니다.
+같은 워크스페이스 절대경로를 선택하면 `dam` 설치 위치가 달라도 같은 Compose 프로젝트를 사용합니다.
 워크스페이스마다 홈 볼륨, Codex 기록, gh/glab 로그인과 tmux 세션이 구분되므로 처음 사용할 때 해당 컨테이너에서 로그인합니다.
 호스트에서 가져오는 공통 설정은 동일합니다.
 
 홈 볼륨 이름은 `<프로젝트 이름>_dev-home`이며 `/home`에 연결합니다.
 이 볼륨에 기본 계정(`node`)을 포함한 모든 사용자의 홈과 계정 등록 정보를 보관합니다.
-`./dam WORKSPACE config`로 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
+`/path/to/dam WORKSPACE config`로 워크스페이스와 공유 설정 경로, 프로젝트 이름, 홈 볼륨 이름을 확인할 수 있습니다.
 
 ## 사용자 추가와 전환
 
 사용자 등록 정보는 워크스페이스별로 보관합니다.
 컨테이너 시작 시 계정 관리 도구가 등록된 계정과 UID/GID를 복원하고, 홈과 공통 설정을 초기화합니다.
 기본 계정 `node`는 자동으로 등록됩니다.
-추가 계정은 호스트의 `./dam WORKSPACE user add USER` 명령으로 등록한 뒤 사용할 수 있으며, 시스템에 따로 생성한 계정은 자동으로 등록하지 않습니다.
+추가 계정은 호스트의 `/path/to/dam WORKSPACE user add USER` 명령으로 등록한 뒤 사용할 수 있으며, 시스템에 따로 생성한 계정은 자동으로 등록하지 않습니다.
 
 컨테이너에 미리 준비한 일반 계정 중 `users` 그룹에 속하는 계정끼리는 비밀번호 없이 전환할 수 있습니다.
 `node`와 추가한 사용자는 이 그룹에 자동으로 들어갑니다.
@@ -91,9 +115,9 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `./dam ws1 tmux coding`으로 연�
 
 ```bash
 # 호스트
-./dam ws1 user add alice
-./dam ws1 user add bob
-./dam ws1
+/path/to/dam ws1 user add alice
+/path/to/dam ws1 user add bob
+/path/to/dam ws1
 
 # 컨테이너 안
 su - alice
@@ -167,7 +191,7 @@ codex
 nvim .
 ```
 
-`/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `dam/workspaces/ws1`)를 연결한 bind mount입니다.
+`/workspace`는 선택한 워크스페이스의 호스트 디렉토리(`ws1` → `<실행한 현재 디렉토리>/ws1`)를 연결한 bind mount입니다.
 작업할 디렉토리에서 Codex를 실행하면 되고, 여러 작업을 동시에 진행할 때는 tmux 창을 나누거나 이름이 다른 세션을 사용하면 됩니다.
 도구는 현재 Linux 사용자의 홈과 CLI 로그인을 사용합니다.
 
@@ -197,8 +221,8 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 
 | 항목 | 호스트 경로 | 컨테이너 경로 | 동작 |
 | --- | --- | --- | --- |
-| 작업 공간 | `dam/workspaces/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
-| 워크스페이스 Bash 설정 | `dam/workspaces/{WORKSPACE}/.bashrc` | `/workspace/.bashrc` | 읽기/쓰기 공유, 존재하면 source, `sync`는 생성하거나 수정하지 않음 |
+| 작업 공간 | `<CWD>/{WORKSPACE}` | `/workspace` | 읽기/쓰기 공유 |
+| 워크스페이스 Bash 설정 | `<CWD>/{WORKSPACE}/.bashrc` | `/workspace/.bashrc` | 읽기/쓰기 공유, 존재하면 source, `sync`는 생성하거나 수정하지 않음 |
 | Codex 공통 설정 | `~/.codex/config.toml` | `/etc/codex/config.toml` | 호스트에서 단방향 동기화 |
 | Codex 사용자 스킬 | `~/.codex/skills`, `~/.agents/skills` | `/home/node/.codex/skills`, `/home/node/.agents/skills` | 사용자 스킬만 복사한 뒤 읽기 전용으로 연결 |
 | Codex 선택적 rules/agents/AGENTS.md | `~/.codex/rules`, `~/.codex/agents`, `~/.codex/AGENTS.md` | `/home/node/.codex/rules`, `/home/node/.codex/agents`, `/home/node/.codex/AGENTS.md` | 존재하는 항목을 복사한 뒤 읽기 전용으로 연결 |
@@ -211,7 +235,7 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 | Git 설정/SSH 키/도구 캐시 | -- | `/home/node` | 컨테이너 볼륨에 보관 |
 
 공통 설정 동기화는 **호스트 -> 컨테이너 단방향**입니다.
-`./dam WORKSPACE`, `./dam WORKSPACE tmux SESSION`, `./dam WORKSPACE exec`, `./dam WORKSPACE user add USER`, `./dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
+`/path/to/dam WORKSPACE`, `/path/to/dam WORKSPACE tmux SESSION`, `/path/to/dam WORKSPACE exec`, `/path/to/dam WORKSPACE user add USER`, `/path/to/dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
 컨테이너에서 수정한 공통 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집해야 합니다.
 컨테이너에서만 적용하고 싶은 설정은 `/workspace/.bashrc`에 설정하세요.
 이 파일은 동기화되지 않습니다.
@@ -228,7 +252,8 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 
 호스트의 Codex `auth.json`, 대화 기록, gh/glab 설정, `.gitconfig`, `.ssh`, SSH agent, Docker 소켓은 연결하지 않습니다.
 호스트의 인증 토큰 환경변수도 전달하지 않습니다.
-공유 설정은 `.host-settings/`에 생성되며 Git 추적과 Docker 이미지 빌드에서 제외됩니다.
+공유 설정 사본은 `<CWD>/.host-settings/`에 생성되며, 같은 상위 디렉토리의 워크스페이스들이 공유합니다.
+사본은 컨테이너의 일반 계정이 읽을 수 있는 권한을 유지하며, 호스트에서는 비공개 실행 디렉토리가 다른 사용자의 접근을 차단합니다.
 컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한과 계정을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
 런처의 셸과 명령도 항상 `node`로 실행합니다.
 파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.
@@ -239,28 +264,30 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 ## 관리
 
 ```bash
-./dam ws1 sync                   # ws1 컨테이너에 호스트 설정 다시 반영
-./dam ws1 config                 # Docker 데몬 없이 경로/설정 검사
-./dam ws1 exec codex --version
-./dam ws1 exec nvim --version
-./dam ws1 user add alice         # ws1에 영구 사용자 추가, su - alice로 전환
-./dam ws1 ps
-./dam ws1 sessions               # ws1 컨테이너의 tmux 세션 목록
-./dam ws1 logs --tail 50
-./dam ws1 stop                   # ws1 컨테이너 중지
-./dam ws1 down                   # ws1 컨테이너 삭제, 홈 볼륨/작업 공간 유지
-./dam ws1 build                  # 이미지 다시 빌드하고 컨테이너 실행
-./dam ws1 build --no-cache       # 캐시 없이 다시 빌드해 Codex 최신 버전 설치 후 컨테이너 실행
-./dam ws1                        # ws1 컨테이너 셸 접속
-./dam ws2 tmux coding            # 별도 ws2 컨테이너의 coding 세션에 연결
+/path/to/dam ws1 sync                   # ws1 컨테이너에 호스트 설정 다시 반영
+/path/to/dam ws1 config                 # Docker 데몬 없이 경로/설정 검사
+/path/to/dam ws1 exec codex --version
+/path/to/dam ws1 exec nvim --version
+/path/to/dam ws1 user add alice         # ws1에 영구 사용자 추가, su - alice로 전환
+/path/to/dam ws1 ps
+/path/to/dam ws1 sessions               # ws1 컨테이너의 tmux 세션 목록
+/path/to/dam ws1 logs --tail 50
+/path/to/dam ws1 stop                   # ws1 컨테이너 중지
+/path/to/dam ws1 down                   # ws1 컨테이너 삭제, 홈 볼륨/작업 공간 유지
+/path/to/dam ws1 build                  # 이미지 다시 빌드하고 컨테이너 실행
+/path/to/dam ws1 build --no-cache       # 캐시 없이 다시 빌드해 Codex 최신 버전 설치 후 컨테이너 실행
+/path/to/dam ws1                        # ws1 컨테이너 셸 접속
+/path/to/dam ws2 tmux coding            # 별도 ws2 컨테이너의 coding 세션에 연결
 ```
 
 명령은 선택한 워크스페이스의 Compose 프로젝트에만 적용됩니다.
+`stop`, `down`, `sessions` 같은 관리 명령도 워크스페이스를 만들 때와 같은 상위 디렉토리에서 실행해야 같은 프로젝트를 선택합니다.
+예를 들어 `workspaces/`에서 `/path/to/dam ws1 build`로 시작했다면 같은 위치에서 `/path/to/dam ws1 stop`으로 중지합니다.
 `sessions`는 설정을 동기화하거나 중지된 컨테이너를 시작하지 않습니다.
 컨테이너가 실행 중이 아니면 세션을 조회할 수 없다는 안내를 출력하고, 실행 중이면 `tmux list-sessions` 결과를 출력합니다.
 실행 중인 컨테이너에 tmux 서버가 없으면 tmux의 기본 오류 메시지와 종료 상태를 반환합니다.
 인증 정보와 기록은 해당 프로젝트의 홈 볼륨에 남습니다.
-`./dam WORKSPACE down -v`는 홈 볼륨과 모든 사용자 등록 정보까지 삭제하므로 초기화할 때만 사용하세요.
+`/path/to/dam WORKSPACE down -v`는 홈 볼륨과 모든 사용자 등록 정보까지 삭제하므로 초기화할 때만 사용하세요.
 
 Node.js는 24 계열이며 Neovim/gh/OS 패키지는 빌드 시 공식 APT 저장소에서 설치합니다.
 
