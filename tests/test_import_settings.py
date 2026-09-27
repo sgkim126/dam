@@ -235,6 +235,108 @@ config_file = "/Users/host/private/reviewer.toml"
             capture_output=True, text=True, timeout=10,
         )
 
+    def prepare_host_settings(self, destination):
+        with contextlib.redirect_stdout(io.StringIO()):
+            settings._shared.prepare(self.home, destination)
+
+    def foreign_owner(self, target):
+        original_stat = Path.stat
+
+        def inspect(path, *args, **kwargs):
+            info = original_stat(path, *args, **kwargs)
+            if path == target:
+                return os.stat_result((*info[:4], info.st_uid + 1, *info[5:]))
+            return info
+
+        return mock.patch.object(Path, "stat", inspect)
+
+    def test_host_staging_accepts_owned_private_caller(self):
+        caller = self.root / "caller"
+        caller.mkdir(mode=0o700)
+        caller.chmod(0o700)
+        self.write(self.home / ".tmux.conf", "private host settings")
+        (self.home / ".tmux.conf").chmod(0o600)
+        self.write(self.home / ".codex/skills/review/SKILL.md", "shared skill")
+        self.write(self.home / ".vim/plugins.vim", "set number\n")
+        for mask in (0o000, 0o077):
+            with self.subTest(umask=oct(mask)):
+                destination = caller / f"settings-{mask:o}"
+                previous_mask = os.umask(mask)
+                try:
+                    self.prepare_host_settings(destination)
+                finally:
+                    os.umask(previous_mask)
+                self.assertEqual(caller.stat().st_mode & 0o777, 0o700)
+                for directory in (destination, *(p for p in destination.rglob("*") if p.is_dir())):
+                    self.assertEqual(directory.stat().st_mode & 0o777, 0o755, str(directory))
+                for relative in ("tmux.conf", "codex/skills/review/SKILL.md", "vim/plugins.vim"):
+                    self.assertEqual((destination / relative).stat().st_mode & 0o777, 0o644, relative)
+                self.assertEqual((destination / "tmux.conf").read_text(), "private host settings")
+        self.assertEqual((self.home / ".tmux.conf").stat().st_mode & 0o777, 0o600)
+
+    def test_host_staging_rejects_public_caller_beneath_owned_private_ancestor(self):
+        caller = self.root / "caller"
+        caller.mkdir(mode=0o700)
+        self.assertEqual(self.root.stat().st_mode & 0o777, 0o700)
+        self.write(self.home / ".tmux.conf", "private host settings")
+        (self.home / ".tmux.conf").chmod(0o600)
+        destination = caller / ".host-settings"
+        for mode in (0o755, 0o750, 0o701):
+            with self.subTest(mode=oct(mode)):
+                caller.chmod(mode)
+                with (
+                    mock.patch.object(settings._shared, "stage_codex_config") as config_reader,
+                    mock.patch.object(settings._shared, "copy_asset") as copier,
+                ):
+                    with self.assertRaisesRegex(ValueError, "must not be traversable by group or other users"):
+                        self.prepare_host_settings(destination)
+                config_reader.assert_not_called()
+                copier.assert_not_called()
+                self.assertFalse(destination.exists())
+                self.assertEqual(caller.stat().st_mode & 0o777, mode)
+
+    def test_private_staging_itself_does_not_authorize_public_caller(self):
+        caller = self.root / "caller"
+        caller.mkdir(mode=0o755)
+        caller.chmod(0o755)
+        destination = caller / ".host-settings"
+        self.write(destination / settings._shared.MARKER, settings._shared.MARKER_CONTENT)
+        self.write(destination / "tmux.conf", "previous private settings")
+        destination.chmod(0o700)
+        with (
+            mock.patch.object(settings._shared, "stage_codex_config") as config_reader,
+            mock.patch.object(settings._shared, "copy_asset") as copier,
+        ):
+            with self.assertRaises(ValueError):
+                self.prepare_host_settings(destination)
+        config_reader.assert_not_called()
+        copier.assert_not_called()
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((destination / "tmux.conf").read_text(), "previous private settings")
+        self.assertEqual(len(list(destination.iterdir())), 2)
+
+    def test_host_staging_rejects_foreign_owned_caller(self):
+        caller = self.root / "caller"
+        caller.mkdir(mode=0o700)
+        destination = caller / ".host-settings"
+        with self.foreign_owner(caller):
+            with self.assertRaisesRegex(ValueError, "parent directory must belong to the current user"):
+                self.prepare_host_settings(destination)
+        self.assertFalse(destination.exists())
+
+    def test_host_staging_rejects_foreign_owned_destination_before_copying(self):
+        destination = self.root / ".host-settings"
+        destination.mkdir(mode=0o700)
+        with (
+            self.foreign_owner(destination),
+            mock.patch.object(settings._shared, "copy_asset") as copier,
+        ):
+            with self.assertRaises(ValueError):
+                self.prepare_host_settings(destination)
+        copier.assert_not_called()
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(list(destination.iterdir()), [])
+
     def test_host_staging_requires_one_absolute_destination_before_copying(self):
         for args in (
             (), ("",), ("relative/path",), (str(self.root), "extra"),
@@ -250,6 +352,8 @@ config_file = "/Users/host/private/reviewer.toml"
 
     def test_host_staging_cli_refreshes_explicit_destination_without_replacing_directory(self):
         destination = self.root / "caller settings 설정" / ".host-settings"
+        destination.parent.mkdir(mode=0o700)
+        destination.parent.chmod(0o700)
         self.write(self.home / ".tmux.conf", "first settings")
         result = self.run_host_staging(destination)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -264,6 +368,8 @@ config_file = "/Users/host/private/reviewer.toml"
 
     def test_host_staging_cli_preserves_unmanaged_directory_and_symlink_target(self):
         destination = self.root / "caller" / ".host-settings"
+        destination.parent.mkdir(mode=0o700)
+        destination.parent.chmod(0o700)
         sentinel = destination / "keep.txt"
         self.write(sentinel, "existing data")
         result = self.run_host_staging(destination)
@@ -290,6 +396,7 @@ config_file = "/Users/host/private/reviewer.toml"
                 home = self.root / f"nested-home-{index}"
                 source = home / source_name
                 self.write(source / asset, "host asset")
+                source.chmod(0o700)
                 destination = source / ".host-settings"
                 destination.mkdir()
                 (source / "staging-alias").symlink_to(destination)

@@ -74,10 +74,16 @@ cd ~/dam-workspaces
 디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `user add`, `sync`, `config` 실행 시 생성합니다.
 `.host-settings`는 공통 설정용으로 예약되어 있어 대소문자와 관계없이 워크스페이스 이름으로 사용할 수 없습니다.
 
+실행 디렉토리 자체가 현재 사용자 소유이며 그룹과 다른 사용자의 탐색(실행) 권한이 없어야 합니다.
+홈 등 상위 디렉토리가 비공개여도 실행 디렉토리에 그룹이나 다른 사용자의 탐색 권한이 있으면 거부합니다.
+이 조건을 만족하지 않는 공개 경로에서는 설정을 준비하는 명령을 워크스페이스 생성이나 설정 복사 전에 거부합니다.
+실행할 디렉토리에 직접 `chmod 700`으로 접근을 제한하세요. 런처는 기존 경로의 권한을 자동으로 변경하지 않습니다.
+
 기존 `dam/workspaces/<이름>` 배치를 사용하려면 `dam` 스크립트가 있는 디렉토리에서 다음처럼 실행합니다.
 
 ```bash
 mkdir -p workspaces
+chmod 700 workspaces
 cd workspaces
 /path/to/dam ws1 build
 /path/to/dam ws1 tmux coding
@@ -247,6 +253,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 호스트의 Codex `auth.json`, 대화 기록, gh/glab 설정, `.gitconfig`, `.ssh`, SSH agent, Docker 소켓은 연결하지 않습니다.
 호스트의 인증 토큰 환경변수도 전달하지 않습니다.
 공유 설정 사본은 `<CWD>/.host-settings/`에 생성되며, 같은 상위 디렉토리의 워크스페이스들이 공유합니다.
+사본은 컨테이너의 일반 계정이 읽을 수 있는 권한을 유지하며, 호스트에서는 비공개 실행 디렉토리가 다른 사용자의 접근을 차단합니다.
 컨테이너 시작 시 root로 `/workspace` 디렉토리 자체의 공유 권한과 계정을 준비한 뒤 일반 실행 프로세스는 `node`로 전환합니다.
 런처의 셸과 명령도 항상 `node`로 실행합니다.
 파일 권한 설정과 사용자 권한 전환, 프로세스 종료에 필요한 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETUID`, `SETGID`만 컨테이너에 부여합니다.

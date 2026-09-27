@@ -1,4 +1,4 @@
-"""Exercise workspace selection without starting Docker or importing host settings.
+"""Exercise workspace selection with a temporary home and fake Docker.
 
 Run with: python3 -m unittest discover -s tests -v
 """
@@ -46,6 +46,8 @@ class DamLauncherTests(unittest.TestCase):
                 }
                 with open(os.environ["DAM_TEST_EVENTS"], "a") as events:
                     events.write(json.dumps(event) + "\\n")
+                if os.environ.get("DAM_TEST_FAIL_PREPARE") == "1":
+                    sys.exit(19)
                 Path(sys.argv[1]).mkdir(exist_ok=True)
                 """
             )
@@ -262,8 +264,16 @@ class DamLauncherTests(unittest.TestCase):
                     self.assertEqual(list(target.iterdir()), [])
 
     def test_workspace_selects_dedicated_project_and_home_volume(self):
+        shutil.copy2(
+            SOURCE_ROOT / "docker/prepare-settings.py",
+            self.launcher_root / "docker/prepare-settings.py",
+        )
+        host_tmux_config = Path(self.env["HOME"]) / ".tmux.conf"
+        host_tmux_config.write_text("set -g mouse on\n")
         workspace = self.launcher_root / "workspaces" / "ws2"
-        workspace.mkdir(parents=True)
+        workspace.parent.mkdir(mode=0o700)
+        workspace.parent.chmod(0o700)
+        workspace.mkdir()
         existing_file = workspace / "existing.txt"
         existing_file.write_text("keep workspace data")
 
@@ -275,6 +285,8 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual(project, "dam-ws2-" + digest)
         self.assertIn(f"Project: {project}\n", result.stdout)
         self.assertEqual(existing_file.read_text(), "keep workspace data")
+        staged_tmux_config = workspace.parent / ".host-settings" / "tmux.conf"
+        self.assertEqual(staged_tmux_config.read_text(), host_tmux_config.read_text())
         compose_text = (self.launcher_root / "compose.yaml").read_text()
         self.assertIn("source: dev-home", compose_text)
         self.assertIn("target: /home\n", compose_text)
@@ -363,6 +375,13 @@ class DamLauncherTests(unittest.TestCase):
         result = self.run_dam("ws2", "build", extra_env={"DAM_TEST_FAIL_ACTION": "build"})
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual([self.command(event)[0] for event in self.docker_calls], ["build"])
+
+    def test_prepare_failure_does_not_create_workspace_or_call_docker(self):
+        result = self.run_dam("unused-workspace", "build", extra_env={"DAM_TEST_FAIL_PREPARE": "1"})
+        self.assertEqual(result.returncode, 19)
+        self.assertEqual([event["kind"] for event in self.events], ["prepare"])
+        self.assertEqual(self.docker_calls, [])
+        self.assertEqual(list(self.workspaces_root.iterdir()), [])
 
     def test_tmux_attaches_to_existing_named_session(self):
         result = self.run_dam("ws2", "tmux", "coding")

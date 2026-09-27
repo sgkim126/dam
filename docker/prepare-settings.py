@@ -130,6 +130,20 @@ def serialize_config(config: dict) -> str:
     )
 
 
+def require_private_parent(destination: Path) -> None:
+    """Require the settings directory's immediate parent to be private."""
+    info = destination.parent.stat()
+    if info.st_uid != os.geteuid():
+        raise ValueError(
+            "The host settings parent directory must belong to the current user"
+        )
+    if info.st_mode & 0o011:
+        raise ValueError(
+            "The host settings parent directory must not be traversable by group or other users; "
+            "use a directory with mode 0700"
+        )
+
+
 def prepare(host_home: Path, destination: Path) -> None:
     host_home = host_home.expanduser().resolve()
     destination = destination.expanduser().absolute()
@@ -138,9 +152,12 @@ def prepare(host_home: Path, destination: Path) -> None:
     destination = destination.resolve()
     if destination == host_home or destination in host_home.parents:
         raise ValueError("The staging destination must not replace the host home or its parents")
+    require_private_parent(destination)
     if destination.exists():
         if not destination.is_dir():
             raise ValueError("The staging destination must be a directory")
+        if destination.stat().st_uid != os.geteuid():
+            raise ValueError("The staging destination must belong to the current user")
         marker = destination / MARKER
         if any(destination.iterdir()) and (
             marker.is_symlink() or not marker.is_file()
@@ -179,6 +196,10 @@ def prepare(host_home: Path, destination: Path) -> None:
             copy_asset(host_home / source, pending / target, excluded=excluded)
         for name in ("autoload", "config", "colors", "after", "plugins.vim"):
             copy_asset(host_home / ".vim" / name, pending / "vim" / name, excluded=excluded)
+        # Implicit parents must be readable in the container even with umask 077.
+        for directory in pending.rglob("*"):
+            if directory.is_dir():
+                directory.chmod(0o755)
         for name in MANAGED_NAMES:
             current = destination / name
             replacement = pending / name
