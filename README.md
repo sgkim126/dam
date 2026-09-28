@@ -54,8 +54,8 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `/path/to/dam ws1 tmux coding`으�
 /path/to/dam ws1 sessions            # ws1의 tmux 세션 목록
 ```
 
-지정하는 세션 이름은 비어 있거나 `.`, `:`, 줄바꿈을 포함할 수 없습니다.
-공백이 있는 이름은 `/path/to/dam ws1 tmux "code review"`처럼 따옴표로 감쌉니다.
+세션 이름은 영문 대소문자(`A-Z`, `a-z`), 숫자(`0-9`), 밑줄(`_`), 하이픈(`-`)만 사용할 수 있습니다.
+예를 들어 `coding`, `Review_2`, `code-review`를 사용할 수 있으며, 공백이나 그 밖의 문자가 들어간 이름은 컨테이너 시작 전에 거부합니다.
 
 ## 여러 워크스페이스
 

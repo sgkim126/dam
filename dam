@@ -12,6 +12,7 @@ WORKSPACE is a directory name under the current working directory.
 Run all commands for a workspace from the same parent directory.
 The default action is shell. build builds the image and starts the container.
 tmux requires SESSION and creates or attaches to that session.
+SESSION must contain only ASCII letters, digits, underscores or hyphens.
 sessions lists tmux sessions without starting the container.
 user add creates a persistent account; switch inside the container with su - USER.
 
@@ -43,12 +44,10 @@ case "$action" in
       usage >&2
       exit 2
     fi
-    case "$1" in
-      ''|*.*|*:*|*$'\n'*|*$'\r'*)
-        printf 'Invalid tmux session name: use a nonempty name without periods, colons, or line breaks.\n' >&2
-        exit 2
-        ;;
-    esac
+    if [[ ! "$1" =~ ^[A-Za-z0-9_-]+$ ]]; then
+      printf 'Invalid tmux session name: use only ASCII letters, digits, underscores or hyphens.\n' >&2
+      exit 2
+    fi
     ;;
   exec)
     if [[ $# -eq 0 ]]; then usage >&2; exit 2; fi
