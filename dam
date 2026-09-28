@@ -13,6 +13,7 @@ Run all commands for a workspace from the same parent directory.
 The default action is shell. build builds the image and starts the container.
 tmux requires SESSION and creates or attaches to that session.
 SESSION must contain only ASCII letters, digits, underscores or hyphens.
+New sessions load ~/SESSION.tmux.conf from the container home if present.
 sessions lists tmux sessions without starting the container.
 user add creates a persistent account; switch inside the container with su - USER.
 
@@ -131,8 +132,10 @@ case "$action" in
     exec "${compose[@]}" exec --user node dev dam-user-env bash -l
     ;;
   tmux)
+    dam_tmux_script="$(cat "$dam_root/docker/tmux.sh")"
     start
-    exec "${compose[@]}" exec --user node dev dam-user-env tmux new-session -A -s "$1"
+    exec "${compose[@]}" exec --user node dev dam-user-env \
+      bash -c "$dam_tmux_script" dam-tmux "$1"
     ;;
   sessions)
     dam_running="$("${compose[@]}" ps --status running -q dev)"

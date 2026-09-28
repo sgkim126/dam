@@ -57,6 +57,45 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `/path/to/dam ws1 tmux coding`으�
 세션 이름은 영문 대소문자(`A-Z`, `a-z`), 숫자(`0-9`), 밑줄(`_`), 하이픈(`-`)만 사용할 수 있습니다.
 예를 들어 `coding`, `Review_2`, `code-review`를 사용할 수 있으며, 공백이나 그 밖의 문자가 들어간 이름은 컨테이너 시작 전에 거부합니다.
 
+### 세션별 tmux 창 초기화
+
+`/path/to/dam ws1 tmux a`는 **컨테이너의 `/home/node/a.tmux.conf`**가 있으면 새 `a` 세션을 만든 직후 해당 파일의 tmux 명령을 실행하고 연결합니다.
+별도의 hook 설정은 필요 없습니다. 파일이 없으면 기본 창 하나로 시작하며, 이미 `a` 세션이 있으면 파일을 다시 실행하지 않고 연결합니다.
+설정 파일은 워크스페이스별 홈 볼륨에 보관하며, 호스트의 `~/a.tmux.conf`는 자동으로 복사하지 않습니다.
+
+예를 들어 다음과 같이 사용자와 디렉토리를 준비합니다.
+
+```bash
+# 호스트
+/path/to/dam ws1 user add username
+/path/to/dam ws1 exec mkdir -p /home/node/tmp /workspace/abc
+/path/to/dam ws1
+```
+
+컨테이너에서 `~/a.tmux.conf`를 작성합니다. 파일 내용은 셸 스크립트가 아닌 tmux 명령이며, 명령 앞에 `:`를 붙이지 않습니다.
+
+```tmux
+# 첫 창을 0번으로 정렬
+set-option base-index 0
+# 일의 명령은 새 세션을 대상으로 실행하므로 `:0`, `:1`처럼 세션 이름을 생략할 수 있습니다.
+move-window -r
+
+# 0번 창은 ~으로 이동
+send-keys -t :0 'cd ~/' Enter
+
+# 1번 창의 이름은 x, 작업 경로는 /workspace/abc
+new-window -t :1 -n x -c /workspace/abc
+# 작업 경로 유지하면서 username 계정으로 전환
+send-keys -t :1 'su username' Enter
+
+select-window -t :0
+```
+
+이후 호스트에서 `/path/to/dam ws1 tmux a`로 실행합니다.
+설정 변경은 다음에 새 세션을 만들 때 적용됩니다.
+설정 실행이 실패하면 오류를 출력하며, 이미 만든 세션과 실행된 명령은 되돌리지 않습니다.
+이 기능은 런처에 포함되어 있어 기존 컨테이너 이미지를 다시 빌드할 필요가 없습니다.
+
 ## 여러 워크스페이스
 
 ```bash
