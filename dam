@@ -5,13 +5,14 @@ dam_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: ./dam --help
+Usage: ./dam [--help]
        ./dam WORKSPACE [--help|shell|tmux SESSION|sessions|exec COMMAND...|user add USER|sync|build|config|stop|down|ps|logs]
 
 WORKSPACE is a directory name under the current working directory.
 .host-settings is reserved for shared host settings.
 Run all commands for a workspace from the same parent directory.
-The default action is shell. build builds the image and starts the container.
+Omitting the command shows this help. Use shell to enter the container.
+build builds the image and starts the container.
 Run build for each workspace before using any other command.
 tmux requires SESSION and creates or attaches to that session.
 SESSION must contain only ASCII letters, digits, underscores or hyphens.
@@ -21,6 +22,7 @@ user add creates a persistent account; switch inside the container with su - USE
 
 Examples:
   ./dam a build
+  ./dam a shell
   ./dam a tmux coding
   ./dam a sessions
   ./dam a user add alice
@@ -29,12 +31,14 @@ Examples:
 USAGE
 }
 
-if [[ $# -eq 0 || -z "$1" ]]; then usage >&2; exit 2; fi
+if [[ $# -eq 0 ]]; then usage; exit 0; fi
+if [[ -z "$1" ]]; then usage >&2; exit 2; fi
 if [[ "$1" == -h || "$1" == --help ]]; then usage; exit 0; fi
 dam_workspace_arg="$1"
 shift
-action="${1:-shell}"
-if [[ $# -gt 0 ]]; then shift; fi
+if [[ $# -eq 0 ]]; then usage; exit 0; fi
+action="$1"
+shift
 
 # Validate before creating directories, copying settings, or calling Docker.
 case "$action" in

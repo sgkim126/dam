@@ -174,7 +174,6 @@ class DamLauncherTests(unittest.TestCase):
 
     def test_all_non_build_actions_require_workspace_image_before_side_effects(self):
         for args in (
-            (),
             ("shell",),
             ("tmux", "coding"),
             ("sessions",),
@@ -208,18 +207,18 @@ class DamLauncherTests(unittest.TestCase):
 
         for name, parent in (("unbuilt", self.workspaces_root), ("built", other_parent)):
             with self.subTest(name=name, parent=parent):
-                result = self.run_dam(name, cwd=parent, extra_env={"DAM_TEST_IMAGES": images})
+                result = self.run_dam(name, "shell", cwd=parent, extra_env={"DAM_TEST_IMAGES": images})
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("build first", result.stderr)
                 self.assertEqual(self.events, self.docker_calls)
                 self.assertEqual(self.action_calls, [])
                 self.assertFalse((parent / name).exists())
 
-        result = self.run_dam("built", extra_env={"DAM_TEST_IMAGES": images})
+        result = self.run_dam("built", "shell", extra_env={"DAM_TEST_IMAGES": images})
         self.assert_success(result)
 
     def test_image_resolution_failure_prevents_preparing_or_starting_workspace(self):
-        result = self.run_dam("unused-workspace", extra_env={"DAM_TEST_FAIL_ACTION": "config"})
+        result = self.run_dam("unused-workspace", "shell", extra_env={"DAM_TEST_FAIL_ACTION": "config"})
         self.assertEqual(result.returncode, 1)
         self.assertIn("build first", result.stderr)
         self.assertIn("unused-workspace", result.stderr)
@@ -228,7 +227,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual(list(self.workspaces_root.iterdir()), [])
 
     def test_image_inspection_error_prevents_preparing_or_starting_workspace(self):
-        result = self.run_dam("unused-workspace", extra_env={"DAM_TEST_FAIL_IMAGE_INSPECT": "1"})
+        result = self.run_dam("unused-workspace", "shell", extra_env={"DAM_TEST_FAIL_IMAGE_INSPECT": "1"})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("daemon unavailable", result.stderr)
         self.assertEqual(self.events, self.docker_calls)
@@ -236,7 +235,7 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual(list(self.workspaces_root.iterdir()), [])
 
     def test_failed_start_does_not_build_or_run_container_commands(self):
-        result = self.run_dam("built", extra_env={"DAM_TEST_FAIL_ACTION": "up"})
+        result = self.run_dam("built", "shell", extra_env={"DAM_TEST_FAIL_ACTION": "up"})
         self.assertEqual(result.returncode, 19)
         commands = [self.command(event)[0] for event in self.action_calls]
         self.assertIn("up", commands)
@@ -245,8 +244,9 @@ class DamLauncherTests(unittest.TestCase):
 
     def test_invalid_arguments_do_not_prepare_settings_or_call_docker(self):
         for args in (
-            (),
+            ("",),
             ("", "tmux"),
+            ("unused-workspace", ""),
             ("unused-workspace", "--help", "extra"),
             ("unused-workspace", "unknown-action"),
             ("unused-workspace", "exec"),
@@ -297,8 +297,8 @@ class DamLauncherTests(unittest.TestCase):
                 self.assertEqual(self.events, [])
                 self.assertFalse((self.workspaces_root / "unused-workspace").exists())
 
-    def test_help_do_not_prepare_settings_or_call_docker(self):
-        for args in (("-h",), ("--help",), ("work", "-h"), ("work", "--help")):
+    def test_missing_action_and_help_do_not_prepare_settings_or_call_docker(self):
+        for args in ((), ("-h",), ("--help",), ("work",), ("work", "-h"), ("work", "--help")):
             with self.subTest(args=args):
                 result = self.run_dam(*args, extra_env={"DAM_TEST_IMAGES": "[]"})
                 self.assert_success(result)
@@ -306,19 +306,6 @@ class DamLauncherTests(unittest.TestCase):
                 self.assertEqual(result.stderr, "")
                 self.assertEqual(self.events, [])
                 self.assertEqual(list(self.workspaces_root.iterdir()), [])
-
-    def test_workspace_defaults_to_shell(self):
-        result = self.run_dam("work")
-        self.assert_success(result)
-        self.assert_selected_workspace(self.workspaces_root / "work")
-        commands = [self.command(event) for event in self.action_calls]
-        self.assertNotIn("build", [command[0] for command in commands])
-        up = next(command for command in commands if command[0] == "up")
-        self.assertIn("--no-build", up)
-        self.assertEqual(up[up.index("--pull") + 1], "never")
-        self.assertEqual(self.command(self.docker_calls[-1]), [
-            "exec", "--user", "node", "dev", "dam-user-env", "bash", "-l",
-        ])
 
     def test_host_settings_name_is_reserved_before_side_effects(self):
         for name in (".host-settings", ".HOST-SETTINGS", ".Host-Settings"):

@@ -30,7 +30,8 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 /path/to/dam workspace-amd build
 ```
 
 첫 인자는 워크스페이스 이름입니다.
-`/path/to/dam ws1`는 실행한 현재 디렉토리 아래의 `ws1`을 사용하는 컨테이너의 일반 셸로 들어갑니다.
+`/path/to/dam ws1 shell`은 실행한 현재 디렉토리 아래의 `ws1`을 사용하는 컨테이너의 일반 셸로 들어갑니다.
+명령을 생략한 `/path/to/dam ws1`이나 인자가 없는 `/path/to/dam`은 도움말을 출력하고 정상 종료합니다.
 `/path/to/dam --help`, `/path/to/dam ws1 --help`, `/path/to/dam ws1 -h`로도 도움말을 볼 수 있습니다.
 도움말은 Docker 확인, 워크스페이스 생성, 설정 동기화 없이 출력합니다.
 
@@ -77,7 +78,7 @@ tmux에서 `Ctrl-b d`로 분리한 뒤 다시 `/path/to/dam ws1 tmux coding`으�
 # 호스트
 /path/to/dam ws1 user add username
 /path/to/dam ws1 exec mkdir -p /home/node/tmp /workspace/abc
-/path/to/dam ws1
+/path/to/dam ws1 shell
 ```
 
 컨테이너에서 `~/a.tmux.conf`를 작성합니다. 파일 내용은 셸 스크립트가 아닌 tmux 명령이며, 명령 앞에 `:`를 붙이지 않습니다.
@@ -114,7 +115,7 @@ cd ~/dam-workspaces
 /path/to/dam ws1 tmux coding         # ws1 컨테이너의 coding 세션에 연결
 /path/to/dam ws2 build               # 현재 디렉토리의 ws2용 별도 컨테이너와 홈 볼륨 생성
 /path/to/dam "project with spaces" build  # 이름에 공백이 있으면 따옴표 사용
-/path/to/dam "project with spaces"   # 빌드한 워크스페이스의 셸에 연결
+/path/to/dam "project with spaces" shell  # 빌드한 워크스페이스의 셸에 연결
 ```
 
 워크스페이스는 **`<실행한 현재 디렉토리>/<이름>`**을 사용합니다.
@@ -166,7 +167,7 @@ Compose 파일과 이미지 빌드 위치는 계속 `dam` 스크립트가 있는
 # 호스트
 /path/to/dam ws1 user add alice
 /path/to/dam ws1 user add bob
-/path/to/dam ws1
+/path/to/dam ws1 shell
 
 # 컨테이너 안
 su - alice
@@ -284,7 +285,7 @@ Docker Desktop이나 사용자 네임스페이스를 사용하는 환경에서�
 | Git 설정/SSH 키/도구 캐시 | -- | `/home/node` | 컨테이너 볼륨에 보관 |
 
 공통 설정 동기화는 **호스트 -> 컨테이너 단방향**입니다.
-`/path/to/dam WORKSPACE`, `/path/to/dam WORKSPACE tmux SESSION`, `/path/to/dam WORKSPACE exec`, `/path/to/dam WORKSPACE user add USER`, `/path/to/dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
+`/path/to/dam WORKSPACE shell`, `/path/to/dam WORKSPACE tmux SESSION`, `/path/to/dam WORKSPACE exec`, `/path/to/dam WORKSPACE user add USER`, `/path/to/dam WORKSPACE sync`를 실행할 때 모든 등록 사용자의 설정을 갱신합니다.
 컨테이너에서 수정한 공통 설정은 다음 동기화 때 덮어쓸 수 있으므로 공통 설정은 호스트에서 편집해야 합니다.
 컨테이너에서만 적용하고 싶은 설정은 `/workspace/.bashrc`에 설정하세요.
 이 파일은 동기화되지 않습니다.
@@ -332,7 +333,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 /path/to/dam ws1 down                   # ws1 컨테이너 삭제, 홈 볼륨/작업 공간 유지
 /path/to/dam ws1 build                  # 이미지 다시 빌드하고 컨테이너 실행
 /path/to/dam ws1 build --no-cache       # 캐시 없이 다시 빌드해 Codex 최신 버전 설치 후 컨테이너 실행
-/path/to/dam ws1                        # ws1 컨테이너 셸 접속
+/path/to/dam ws1 shell                  # ws1 컨테이너 셸 접속
 /path/to/dam ws2 tmux coding            # 먼저 빌드한 ws2의 coding 세션에 연결
 ```
 
