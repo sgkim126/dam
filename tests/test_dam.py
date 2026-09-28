@@ -31,6 +31,7 @@ class DamLauncherTests(unittest.TestCase):
         shutil.copy2(SOURCE_ROOT / "compose.yaml", self.launcher_root / "compose.yaml")
         docker_directory = self.launcher_root / "docker"
         docker_directory.mkdir()
+        shutil.copy2(SOURCE_ROOT / "docker/tmux.sh", docker_directory / "tmux.sh")
         (docker_directory / "prepare-settings.py").write_text(
             textwrap.dedent(
                 """\
@@ -175,6 +176,22 @@ class DamLauncherTests(unittest.TestCase):
             ("unused-workspace", "tmux", "review:notes"),
             ("unused-workspace", "tmux", "review\nnotes"),
             ("unused-workspace", "tmux", "review\rnotes"),
+            ("unused-workspace", "tmux", "review notes"),
+            ("unused-workspace", "tmux", "review\tnotes"),
+            ("unused-workspace", "tmux", "review;"),
+            ("unused-workspace", "tmux", "review#{pid}"),
+            ("unused-workspace", "tmux", "review*"),
+            ("unused-workspace", "tmux", "review?"),
+            ("unused-workspace", "tmux", "review[ab]"),
+            ("unused-workspace", "tmux", "review/notes"),
+            ("unused-workspace", "tmux", r"review\notes"),
+            ("unused-workspace", "tmux", "$(touch injected)"),
+            ("unused-workspace", "tmux", "`touch injected`"),
+            ("unused-workspace", "tmux", "review'notes"),
+            ("unused-workspace", "tmux", 'review"notes'),
+            ("unused-workspace", "tmux", "리뷰"),
+            ("unused-workspace", "tmux", "réview"),
+            ("unused-workspace", "tmux", "review+notes"),
             ("unused-workspace", "sessions", "extra"),
             ("unused-workspace", "sync", "extra"),
             ("unused-workspace", "config", "extra"),
@@ -383,12 +400,13 @@ class DamLauncherTests(unittest.TestCase):
         self.assertEqual(self.docker_calls, [])
         self.assertEqual(list(self.workspaces_root.iterdir()), [])
 
-    def test_tmux_attaches_to_existing_named_session(self):
+    def test_tmux_runs_session_launcher_in_container(self):
         result = self.run_dam("ws2", "tmux", "coding")
         self.assert_success(result)
         self.assert_selected_workspace(self.workspaces_root / "ws2")
         self.assertEqual(self.command(self.docker_calls[-1]), [
-            "exec", "--user", "node", "dev", "dam-user-env", "tmux", "new-session", "-A", "-s", "coding",
+            "exec", "--user", "node", "dev", "dam-user-env", "bash", "-c",
+            (SOURCE_ROOT / "docker/tmux.sh").read_text().rstrip("\n"), "dam-tmux", "coding",
         ])
 
     def test_named_tmux_sessions_share_workspace_and_preserve_arguments(self):
@@ -398,14 +416,19 @@ class DamLauncherTests(unittest.TestCase):
         for session in (
             "first",
             "second",
-            "review notes; $(printf injected) `printf injected` * [a]",
+            "Review_2026-1",
+            "123",
+            "_",
+            "-",
+            "-review",
         ):
             with self.subTest(session=session):
                 result = self.run_dam("personal", "tmux", session)
                 self.assert_success(result)
                 projects.add(self.assert_selected_workspace(workspace))
                 self.assertEqual(self.command(self.docker_calls[-1]), [
-                    "exec", "--user", "node", "dev", "dam-user-env", "tmux", "new-session", "-A", "-s", session,
+                    "exec", "--user", "node", "dev", "dam-user-env", "bash", "-c",
+                    (SOURCE_ROOT / "docker/tmux.sh").read_text().rstrip("\n"), "dam-tmux", session,
                 ])
         self.assertEqual(len(projects), 1)
 
