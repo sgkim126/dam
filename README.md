@@ -37,6 +37,12 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 /path/to/dam workspace-amd build
 이름을 생략하면 워크스페이스 생성이나 설정 동기화, 컨테이너 시작 없이 오류로 종료합니다.
 
 `build`는 이미지를 빌드한 뒤 해당 워크스페이스의 컨테이너를 백그라운드에서 실행합니다.
+각 워크스페이스는 먼저 명시적으로 `build`해야 합니다.
+`build`와 도움말을 제외한 명령은 현재 Docker 엔진에 해당 워크스페이스의 빌드 이미지가 있는지 확인합니다.
+이미지가 없으면 워크스페이스 디렉토리나 공통 설정을 만들거나 갱신하지 않고, `build`를 먼저 실행하라는 오류로 종료합니다.
+컨테이너 시작 시 이미지를 자동으로 빌드하거나 내려받지 않습니다.
+기존에 빌드한 이미지는 계속 사용할 수 있으며, 이미지를 삭제했다면 다시 `build`해야 합니다.
+
 `build`와 실행 중인 컨테이너의 `sync`는 컨테이너 `~/.bashrc`에 `alias vi=nvim`도 중복 없이 추가합니다.
 `~/.bashrc`에서 `/workspace/.bashrc`가 있으면 함께 불러오도록 설정합니다.
 `/workspace/.bashrc`는 사용자가 직접 관리하며, `sync`는 이 파일을 생성하거나 수정하지 않습니다.
@@ -105,12 +111,14 @@ cd ~/dam-workspaces
 /path/to/dam ws1 build               # 현재 디렉토리의 ws1을 /workspace로 연결하고 빌드
 /path/to/dam ws1 tmux coding         # ws1 컨테이너의 coding 세션에 연결
 /path/to/dam ws2 build               # 현재 디렉토리의 ws2용 별도 컨테이너와 홈 볼륨 생성
-/path/to/dam "project with spaces"   # 이름에 공백이 있으면 따옴표 사용
+/path/to/dam "project with spaces" build  # 이름에 공백이 있으면 따옴표 사용
+/path/to/dam "project with spaces"   # 빌드한 워크스페이스의 셸에 연결
 ```
 
 워크스페이스는 **`<실행한 현재 디렉토리>/<이름>`**을 사용합니다.
 예를 들어 `/data/projects`에서 `/path/to/dam ws3 build`를 실행하면 `/data/projects/ws3`를 사용합니다.
-디렉토리가 없으면 `build`, `shell`, `tmux`, `exec`, `user add`, `sync`, `config` 실행 시 생성합니다.
+워크스페이스 디렉토리와 공통 설정은 첫 `build`에서 준비합니다.
+해당 워크스페이스의 빌드 이미지가 없으면 다른 명령으로 워크스페이스를 생성할 수 없습니다.
 `.host-settings`는 공통 설정용으로 예약되어 있어 대소문자와 관계없이 워크스페이스 이름으로 사용할 수 없습니다.
 
 실행 디렉토리 자체가 현재 사용자 소유이며 그룹과 다른 사용자의 탐색(실행) 권한이 없어야 합니다.
@@ -311,7 +319,7 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 
 ```bash
 /path/to/dam ws1 sync                   # ws1 컨테이너에 호스트 설정 다시 반영
-/path/to/dam ws1 config                 # Docker 데몬 없이 경로/설정 검사
+/path/to/dam ws1 config                 # 빌드 이미지 확인 후 경로/설정 검사
 /path/to/dam ws1 exec codex --version
 /path/to/dam ws1 exec nvim --version
 /path/to/dam ws1 user add alice         # ws1에 영구 사용자 추가, su - alice로 전환
@@ -323,12 +331,13 @@ Codex 기본 `.system` 스킬은 컨테이너 CLI가 관리하며, 호스트의 
 /path/to/dam ws1 build                  # 이미지 다시 빌드하고 컨테이너 실행
 /path/to/dam ws1 build --no-cache       # 캐시 없이 다시 빌드해 Codex 최신 버전 설치 후 컨테이너 실행
 /path/to/dam ws1                        # ws1 컨테이너 셸 접속
-/path/to/dam ws2 tmux coding            # 별도 ws2 컨테이너의 coding 세션에 연결
+/path/to/dam ws2 tmux coding            # 먼저 빌드한 ws2의 coding 세션에 연결
 ```
 
 명령은 선택한 워크스페이스의 Compose 프로젝트에만 적용됩니다.
 `stop`, `down`, `sessions` 같은 관리 명령도 워크스페이스를 만들 때와 같은 상위 디렉토리에서 실행해야 같은 프로젝트를 선택합니다.
 예를 들어 `workspaces/`에서 `/path/to/dam ws1 build`로 시작했다면 같은 위치에서 `/path/to/dam ws1 stop`으로 중지합니다.
+기본 `down`은 빌드 이미지를 유지하므로 이후 `shell`, `tmux`, `exec`, `user add`로 다시 시작할 수 있습니다.
 `sessions`는 설정을 동기화하거나 중지된 컨테이너를 시작하지 않습니다.
 컨테이너가 실행 중이 아니면 세션을 조회할 수 없다는 안내를 출력하고, 실행 중이면 `tmux list-sessions` 결과를 출력합니다.
 실행 중인 컨테이너에 tmux 서버가 없으면 tmux의 기본 오류 메시지와 종료 상태를 반환합니다.

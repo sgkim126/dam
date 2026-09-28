@@ -11,6 +11,7 @@ WORKSPACE is a directory name under the current working directory.
 .host-settings is reserved for shared host settings.
 Run all commands for a workspace from the same parent directory.
 The default action is shell. build builds the image and starts the container.
+Run build for each workspace before using any other command.
 tmux requires SESSION and creates or attaches to that session.
 SESSION must contain only ASCII letters, digits, underscores or hyphens.
 New sessions load ~/SESSION.tmux.conf from the container home if present.
@@ -107,6 +108,16 @@ export DAM_HOST_SETTINGS_PATH="${DAM_WORKSPACE_PATH%/*}/.host-settings"
 cd "$dam_root"
 compose=(docker compose --project-name "$dam_project" --project-directory "$dam_root" -f "$dam_root/compose.yaml")
 
+# Check before preparing settings or creating directories for a new workspace.
+if [[ "$action" != build ]]; then
+  dam_image="$("${compose[@]}" config --images)"
+  if ! docker image inspect "$dam_image" >/dev/null; then
+    printf 'Workspace image is unavailable. Run %q %q build first.\n' \
+      "$dam_root/dam" "$dam_workspace_arg" >&2
+    exit 1
+  fi
+fi
+
 prepare() {
   python3 "$dam_root/docker/prepare-settings.py" "$DAM_HOST_SETTINGS_PATH"
   mkdir -p -- "$DAM_WORKSPACE_PATH"
@@ -117,7 +128,7 @@ import_settings() {
 }
 
 up() {
-  "${compose[@]}" up -d --wait dev
+  "${compose[@]}" up -d --wait --no-build --pull never dev
   import_settings
 }
 
@@ -157,7 +168,7 @@ case "$action" in
     prepare
     dam_running="$("${compose[@]}" ps --status running -q dev)"
     if [[ -z "$dam_running" ]]; then
-      "${compose[@]}" up -d --wait dev
+      "${compose[@]}" up -d --wait --no-build --pull never dev
     fi
     exec "${compose[@]}" exec -T --user root dev python3 /usr/local/lib/dam/users.py add "$2"
     ;;
