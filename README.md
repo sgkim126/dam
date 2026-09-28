@@ -31,6 +31,8 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 /path/to/dam workspace-amd build
 
 첫 인자는 워크스페이스 이름입니다.
 `/path/to/dam ws1`는 실행한 현재 디렉토리 아래의 `ws1`을 사용하는 컨테이너의 일반 셸로 들어갑니다.
+`/path/to/dam --help`, `/path/to/dam ws1 --help`, `/path/to/dam ws1 -h`로도 도움말을 볼 수 있습니다.
+도움말은 Docker 확인, 워크스페이스 생성, 설정 동기화 없이 출력합니다.
 
 `/path/to/dam ws1 tmux coding`은 `coding` tmux 세션을 만들거나 다시 연결합니다.
 `/path/to/dam WORKSPACE tmux SESSION`의 세션 이름은 필수입니다.

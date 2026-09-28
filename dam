@@ -5,7 +5,8 @@ dam_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: ./dam WORKSPACE [shell|tmux SESSION|sessions|exec COMMAND...|user add USER|sync|build|config|stop|down|ps|logs]
+Usage: ./dam --help
+       ./dam WORKSPACE [--help|shell|tmux SESSION|sessions|exec COMMAND...|user add USER|sync|build|config|stop|down|ps|logs]
 
 WORKSPACE is a directory name under the current working directory.
 .host-settings is reserved for shared host settings.
@@ -37,6 +38,11 @@ if [[ $# -gt 0 ]]; then shift; fi
 
 # Validate before creating directories, copying settings, or calling Docker.
 case "$action" in
+  -h|--help)
+    if [[ $# -gt 0 ]]; then usage >&2; exit 2; fi
+    usage
+    exit 0
+    ;;
   shell|sessions|sync|config)
     if [[ $# -gt 0 ]]; then usage >&2; exit 2; fi
     ;;

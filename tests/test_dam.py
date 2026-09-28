@@ -247,6 +247,7 @@ class DamLauncherTests(unittest.TestCase):
         for args in (
             (),
             ("", "tmux"),
+            ("unused-workspace", "--help", "extra"),
             ("unused-workspace", "unknown-action"),
             ("unused-workspace", "exec"),
             ("unused-workspace", "user", "add"),
@@ -295,6 +296,16 @@ class DamLauncherTests(unittest.TestCase):
                 self.assertTrue(result.stderr)
                 self.assertEqual(self.events, [])
                 self.assertFalse((self.workspaces_root / "unused-workspace").exists())
+
+    def test_help_do_not_prepare_settings_or_call_docker(self):
+        for args in (("-h",), ("--help",), ("work", "-h"), ("work", "--help")):
+            with self.subTest(args=args):
+                result = self.run_dam(*args, extra_env={"DAM_TEST_IMAGES": "[]"})
+                self.assert_success(result)
+                self.assertIn("Usage:", result.stdout)
+                self.assertEqual(result.stderr, "")
+                self.assertEqual(self.events, [])
+                self.assertEqual(list(self.workspaces_root.iterdir()), [])
 
     def test_workspace_defaults_to_shell(self):
         result = self.run_dam("work")
