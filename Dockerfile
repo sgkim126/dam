@@ -6,7 +6,7 @@ FROM node:24-trixie-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       bash build-essential ca-certificates curl fd-find git jq less neovim \
+       bash bash-completion build-essential ca-certificates curl fd-find git jq less neovim \
        openssh-client pipx procps python3 python3-pip python3-venv \
        python-is-python3 ripgrep rsync tmux unzip xz-utils passwd util-linux libpam-modules \
     && install -d -m 0755 /etc/apt/keyrings \
