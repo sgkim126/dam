@@ -36,3 +36,5 @@ jobs:
         run: make lint
       - name: Run unit tests
         run: make test
+      - name: Verify distribution and uv tool installation
+        run: uv run --no-sync python scripts/check_package.py
