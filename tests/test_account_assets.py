@@ -100,6 +100,22 @@ class AccountAssetsTests(unittest.TestCase):
             for name in ("unsafe", "hardlink", "history"):
                 self.assertFalse((destination / "codex/skills" / name).exists())
 
+    def test_user_sync_keeps_authentication_and_personal_codex_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            snapshot = root / "settings"
+            snapshot.mkdir()
+            home = root / "user"
+            codex = home / ".codex"
+            codex.mkdir(parents=True)
+            (codex / "auth.json").write_text("private-token")
+            (codex / "config.toml").write_text('model="personal"\n')
+            (codex / "history.jsonl").write_text("personal-history")
+            IMPORT["import_user_settings"](snapshot, home, "work")
+            self.assertEqual((codex / "auth.json").read_text(), "private-token")
+            self.assertEqual((codex / "config.toml").read_text(), 'model="personal"\n')
+            self.assertEqual((codex / "history.jsonl").read_text(), "personal-history")
+
 
 if __name__ == "__main__":
     unittest.main()
