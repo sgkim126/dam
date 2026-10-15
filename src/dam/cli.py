@@ -3,6 +3,9 @@
 import argparse
 import importlib
 import importlib.util
+import sys
+
+from .errors import DamError
 
 ROOT_COMMANDS = (
     "init",
@@ -79,5 +82,25 @@ def parser():
 def main(argv=None):
     command_parser = parser()
     args = command_parser.parse_args(argv)
-    args.help_parser.print_help()
-    return 0
+    if args.handler is None:
+        args.help_parser.print_help()
+        return 0
+    if args.workspace_required and not args.workspace:
+        command_parser.error("this command requires --workspace/-w before the command")
+    if not args.workspace_required and args.workspace is not None:
+        command_parser.error("this command does not accept --workspace/-w")
+    try:
+        from .model import validate_workspace_name
+        from .store import Store
+
+        if args.workspace is not None:
+            validate_workspace_name(args.workspace)
+        return args.handler(args, Store()) or 0
+    except DamError as error:
+        print(f"dam: {error}", file=sys.stderr)
+        return error.exit_code
+    except (OSError, ValueError) as error:
+        print(f"dam: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
