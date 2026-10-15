@@ -1,4 +1,5 @@
 UV ?= uv
+TEST_PATTERN ?= test*.py
 
 .PHONY: format lint test
 
@@ -10,4 +11,4 @@ lint:
 	$(UV) run --no-sync ruff check .
 
 test:
-	@true
+	$(UV) run --no-sync python -m unittest discover -s tests -p '$(TEST_PATTERN)' -v
