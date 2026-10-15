@@ -8,10 +8,41 @@ from importlib import resources
 from pathlib import Path
 
 ASSETS = resources.files("dam").joinpath("resources", "container", "docker")
+IMPORT = runpy.run_path(str(ASSETS.joinpath("import-settings.py")))
 PREPARE = runpy.run_path(str(ASSETS.joinpath("prepare-settings.py")))
 
 
 class AccountAssetsTests(unittest.TestCase):
+    def test_profile_switch_changes_only_the_managed_block(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            bashrc = home / ".bashrc"
+            bashrc.write_text("export MY_SETTING=keep\n")
+            login = home / ".bash_profile"
+            login.write_text("# keep existing login configuration\n")
+            IMPORT["initialize_shell"](home, "alpha.sh")
+            IMPORT["initialize_shell"](home, "beta.sh")
+            text = bashrc.read_text()
+            self.assertIn("export MY_SETTING=keep", text)
+            self.assertNotIn("alpha.sh", text)
+            self.assertIn("/etc/dam/profile/beta.sh", text)
+            self.assertEqual(text.count("# >>> dam profile >>>"), 1)
+            self.assertEqual(text.count("# >>> dam environment >>>"), 1)
+            self.assertIn("[ -r /etc/dam/profile/beta.sh ]", text)
+            self.assertEqual(login.read_text(), "# keep existing login configuration\n")
+            IMPORT["initialize_shell"](home, None)
+            self.assertNotIn("/etc/dam/profile/", bashrc.read_text())
+
+    def test_shell_import_refuses_a_symlink(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            outside = home / "outside"
+            outside.write_text("preserved")
+            (home / ".bashrc").symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                IMPORT["initialize_shell"](home, "work")
+            self.assertEqual(outside.read_text(), "preserved")
+
     def test_snapshot_remains_bound_and_omits_authentication(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
