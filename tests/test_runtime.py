@@ -54,6 +54,18 @@ class RuntimeTests(RuntimeTestCase):
             )
         )
 
+    def test_missing_source_fails_before_stopping_container(self):
+        before = self.running()
+        self.state["mounts"]["missing"] = {
+            "path": str(self.root / "absent"),
+            "shared": False,
+        }
+        with self.assertRaisesRegex(DamError, "Bind mount source does not exist"):
+            self.runtime.recreate()
+        self.assertEqual(self.docker.calls, [])
+        self.assertTrue(self.docker.containers["dev"]["State"]["Running"])
+        self.assertEqual(self.docker.containers["dev"]["Id"], before["Id"])
+
     def test_unowned_container_is_never_modified(self):
         self.running()
         self.docker.containers["dev"]["Config"]["Labels"] = {}
@@ -68,6 +80,16 @@ class RuntimeTests(RuntimeTestCase):
             self.runtime.ensure_running()
         self.assertEqual(len(self.docker.calls), 1)
         self.assertEqual(self.docker.images, set())
+
+    def test_failed_recreation_restores_old_container_and_running_state(self):
+        before = self.running()
+        self.docker.fail = ("container", "create")
+        with self.assertRaisesRegex(DamError, "injected"):
+            self.runtime.recreate()
+        self.assertEqual(set(self.docker.containers), {"dev"})
+        self.assertEqual(self.runtime.inspect()["Id"], before["Id"])
+        self.assertTrue(self.runtime.is_running())
+        self.assertIn(self.runtime.volume, self.docker.volumes)
 
     def test_exec_preserves_arguments_and_does_not_implicitly_start(self):
         self.runtime.exec(
@@ -109,6 +131,74 @@ class RuntimeTests(RuntimeTestCase):
                 for argument in create
             )
         )
+
+    def test_failed_container_rename_restores_running_state(self):
+        before = self.running()
+        self.docker.fail = ("container", "rename")
+        with self.assertRaisesRegex(DamError, "injected"):
+            self.runtime.recreate()
+        self.assertEqual(set(self.docker.containers), {"dev"})
+        self.assertEqual(self.runtime.inspect()["Id"], before["Id"])
+        self.assertTrue(self.runtime.is_running())
+
+    def test_stopped_mount_configuration_changes_apply_on_next_start(self):
+        before = self.running()
+        self.runtime.stop()
+        host = self.root / "new-source"
+        host.mkdir()
+        self.state["mounts"]["work"] = {
+            "path": str(host),
+            "shared": False,
+        }
+        self.store.save(self.state)
+        self.docker.calls.clear()
+        self.runtime.ensure_running()
+        self.assertNotEqual(self.runtime.inspect()["Id"], before["Id"])
+        self.assertTrue(self.runtime.is_running())
+        create = next(
+            call for call in self.docker.calls if call[1:3] == ["container", "create"]
+        )
+        self.assertTrue(
+            any(
+                f"source={host}" in argument and "target=/mnt/work" in argument
+                for argument in create
+            )
+        )
+        self.assertEqual(set(self.docker.volumes), {self.runtime.volume})
+        self.assertEqual(set(self.docker.containers), {"dev"})
+
+    def test_sharing_only_change_does_not_recreate_container_on_start(self):
+        host = self.root / "shared"
+        host.mkdir()
+        self.state["mounts"]["work"] = {
+            "path": str(host),
+            "shared": False,
+        }
+        self.store.save(self.state)
+        before = self.running()
+        self.runtime.stop()
+        self.state["mounts"]["work"]["shared"] = True
+        self.store.save(self.state)
+        self.docker.calls.clear()
+        self.runtime.ensure_running()
+        self.assertEqual(self.runtime.inspect()["Id"], before["Id"])
+        self.assertFalse(
+            any(call[1:3] == ["container", "create"] for call in self.docker.calls)
+        )
+
+    def test_running_mount_configuration_mismatch_never_recreates_implicitly(self):
+        before = self.running()
+        host = self.root / "different"
+        host.mkdir()
+        self.state["mounts"]["work"] = {
+            "path": str(host),
+            "shared": False,
+        }
+        self.store.save(self.state)
+        with self.assertRaisesRegex(DamError, "different mount configuration"):
+            self.runtime.ensure_running()
+        self.assertEqual(self.docker.containers["dev"]["Id"], before["Id"])
+        self.assertTrue(all(call[2] == "inspect" for call in self.docker.calls))
 
     def test_host_settings_is_available_as_a_user_mount_name(self):
         host = self.root / "own-settings"

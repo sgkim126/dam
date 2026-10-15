@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import time
+import uuid
 from pathlib import Path
 
 from .assets import build_context
@@ -19,6 +20,7 @@ from .process import run
 
 LABEL_WORKSPACE = "io.dam.workspace"
 LABEL_ROOT = "io.dam.config-root"
+LABEL_MOUNTS = "io.dam.mounts"
 READY_TIMEOUT = 60.0
 
 
@@ -58,6 +60,15 @@ class Runtime:
             LABEL_WORKSPACE: self.name,
             LABEL_ROOT: str(store.root.resolve()),
         }
+
+    @property
+    def mount_fingerprint(self) -> str:
+        # Sharing changes permissions in place; only bind identities need recreation.
+        sources = {
+            name: mount["path"] for name, mount in self.state.get("mounts", {}).items()
+        }
+        encoded = json.dumps(sources, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(encoded).hexdigest()
 
     def _inspect(self, kind: str, name: str):
         result = run(["docker", kind, "inspect", name], check=False, capture=True)
@@ -174,6 +185,7 @@ class Runtime:
             command.extend(["--cap-add", capability])
         for key, value in self.labels.items():
             command.extend(["--label", f"{key}={value}"])
+        command.extend(["--label", f"{LABEL_MOUNTS}={self.mount_fingerprint}"])
         command.extend(
             [
                 "--mount",
@@ -236,10 +248,62 @@ class Runtime:
         elif container.get("State", {}).get("Paused"):
             raise DamError(f"Workspace container is paused: {self.name}")
         elif container.get("State", {}).get("Running"):
+            actual = container.get("Config", {}).get("Labels", {}).get(LABEL_MOUNTS)
+            if actual != self.mount_fingerprint:
+                raise DamError(
+                    f"Running workspace has a different mount configuration: {self.name}. Stop its container before starting it again."
+                )
             self._wait_ready()
+            return
+        elif (
+            container.get("Config", {}).get("Labels", {}).get(LABEL_MOUNTS)
+            != self.mount_fingerprint
+        ):
+            self.recreate()
             return
         run(["docker", "container", "start", self.name], capture=True)
         self._wait_ready()
+
+    def recreate(self):
+        self._prepare_mounts()
+        container = self.inspect()
+        if container is None:
+            self.ensure_running()
+            return
+        self._ensure_image()
+        self._ensure_volume()
+        was_running = bool(container.get("State", {}).get("Running"))
+        backup = f"{self.name}.dam-backup-{uuid.uuid4().hex[:12]}"
+        if was_running:
+            run(["docker", "container", "stop", self.name], capture=True)
+        try:
+            run(["docker", "container", "rename", self.name, backup], capture=True)
+        except BaseException:
+            if was_running:
+                run(["docker", "container", "start", self.name], capture=True)
+            raise
+        try:
+            self._create()
+            run(["docker", "container", "start", self.name], capture=True)
+            self._wait_ready()
+        except BaseException as error:
+            try:
+                replacement = self.inspect()
+                if replacement is not None:
+                    run(
+                        ["docker", "container", "rm", "--force", self.name],
+                        capture=True,
+                    )
+                run(["docker", "container", "rename", backup, self.name], capture=True)
+                if was_running:
+                    run(["docker", "container", "start", self.name], capture=True)
+            # Preserve the original failure and any failure during rollback.
+            except Exception as rollback_error:  # noqa: BLE001
+                raise DamError(
+                    f"Container recreation failed: {error}. Recovery also failed: {rollback_error}. Previous container: {backup}"
+                ) from error
+            raise
+        run(["docker", "container", "rm", backup], capture=True)
 
     def exec(self, argv, user="root", interactive=False, capture=False, check=True):
         command = ["docker", "container", "exec"]

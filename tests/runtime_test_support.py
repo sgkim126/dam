@@ -21,6 +21,7 @@ class FakeDocker:
         self.containers = {}
         self.volumes = {}
         self.images = set()
+        self.fail = None
         self.daemon_error = False
         self.next_id = 1
 
@@ -31,6 +32,9 @@ class FakeDocker:
         stdout, stderr, code = "", "", 0
         if self.daemon_error:
             code, stderr = 1, "Cannot connect to the Docker daemon"
+        elif self.fail == (kind, action):
+            self.fail = None
+            code, stderr = 17, "injected Docker failure"
         elif kind == "build":
             self.images.add(argv[argv.index("--tag") + 1])
         elif action == "inspect":
@@ -71,6 +75,8 @@ class FakeDocker:
                 Running=action == "start",
                 Status="running" if action == "start" else "exited",
             )
+        elif kind == "container" and action == "rename":
+            self.containers[argv[-1]] = self.containers.pop(argv[-2])
         elif kind == "container" and action == "rm":
             del self.containers[argv[-1]]
         elif kind == "container" and action in ("exec", "logs"):
