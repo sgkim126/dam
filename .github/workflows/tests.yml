@@ -38,3 +38,32 @@ jobs:
         run: make test
       - name: Verify distribution and uv tool installation
         run: uv run --no-sync python scripts/check_package.py
+
+  container:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      DAM_INTEGRATION_IMAGE: dam-ci:${{ github.run_id }}-${{ github.run_attempt }}
+      DAM_RUN_INTEGRATION: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.13.1'
+          python-version: '3.15'
+          enable-cache: true
+      - name: Install dam including container resources
+        run: uv sync --locked --no-editable
+      - name: Build from installed package
+        run: uv run --no-sync python scripts/build_test_image.py --tag "$DAM_INTEGRATION_IMAGE"
+      - name: Test disposable containers and volumes
+        run: make test TEST_PATTERN='*container*.py'
+      - name: Remove test image
+        if: always()
+        run: docker image rm "$DAM_INTEGRATION_IMAGE"
