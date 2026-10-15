@@ -110,7 +110,11 @@ compose=(docker compose --project-name "$dam_project" --project-directory "$dam_
 
 # Check before preparing settings or creating directories for a new workspace.
 if [[ "$action" != build ]]; then
-  dam_image="$("${compose[@]}" config --images)"
+  if ! dam_image="$("${compose[@]}" config --images)"; then
+    printf 'Workspace image is unavailable. Run %q %q build first.\n' \
+      "$dam_root/dam" "$dam_workspace_arg" >&2
+    exit 1
+  fi
   if ! docker image inspect "$dam_image" >/dev/null; then
     printf 'Workspace image is unavailable. Run %q %q build first.\n' \
       "$dam_root/dam" "$dam_workspace_arg" >&2

@@ -220,7 +220,9 @@ class DamLauncherTests(unittest.TestCase):
 
     def test_image_resolution_failure_prevents_preparing_or_starting_workspace(self):
         result = self.run_dam("unused-workspace", extra_env={"DAM_TEST_FAIL_ACTION": "config"})
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("build first", result.stderr)
+        self.assertIn("unused-workspace", result.stderr)
         self.assertEqual(self.events, self.docker_calls)
         self.assertEqual(self.action_calls, [])
         self.assertEqual(list(self.workspaces_root.iterdir()), [])
