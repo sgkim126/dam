@@ -1,0 +1,13 @@
+# Only non-system members of users may switch identities.
+# Passwords stay locked: this is a local trusted-account workflow, not login.
+auth requisite pam_succeed_if.so quiet uid >= 1000 user ingroup users
+auth requisite pam_succeed_if.so quiet use_uid uid >= 1000 user ingroup users
+auth required pam_permit.so
+@include common-account
+session required pam_env.so readenv=1
+session required pam_env.so readenv=1 envfile=/etc/default/locale
+session required pam_limits.so
+@include common-session
+# Non-login su -c commands do not read shell startup files.
+session required pam_umask.so umask=0002
+session required pam_env.so conffile=/etc/security/dam-env.conf readenv=0 user_readenv=0
