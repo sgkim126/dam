@@ -6,13 +6,65 @@ import tempfile
 import unittest
 from importlib import resources
 from pathlib import Path
+from unittest import mock
 
 ASSETS = resources.files("dam").joinpath("resources", "container", "docker")
+USERS = runpy.run_path(str(ASSETS.joinpath("users.py")))
 IMPORT = runpy.run_path(str(ASSETS.joinpath("import-settings.py")))
 PREPARE = runpy.run_path(str(ASSETS.joinpath("prepare-settings.py")))
 
 
+def state():
+    return {
+        "version": 1,
+        "shared_gid": 100,
+        "users": {
+            "node": {
+                "uid": 1000,
+                "gid": 1000,
+                "active": True,
+                "profile": None,
+            },
+            "alice": {
+                "uid": 2000,
+                "gid": 2000,
+                "active": False,
+                "profile": "work",
+            },
+        },
+    }
+
+
 class AccountAssetsTests(unittest.TestCase):
+    def test_deleted_identity_stays_reserved_but_is_not_restored(self):
+        saved = state()
+        USERS["validate_state"](saved)
+        namespace = USERS["restore"].__globals__
+        with (
+            mock.patch.dict(
+                namespace, ensure_account=mock.Mock(), import_user=mock.Mock()
+            ),
+            mock.patch.object(
+                namespace["grp"], "getgrnam", return_value=mock.Mock(gr_gid=100)
+            ),
+        ):
+            USERS["restore"](saved)
+            namespace["ensure_account"].assert_called_once_with(
+                "node", saved["users"]["node"]
+            )
+            namespace["import_user"].assert_called_once_with(
+                "node", saved["users"]["node"], "--shell-only"
+            )
+        saved["users"]["bob"] = dict(saved["users"]["alice"], active=True)
+        with self.assertRaisesRegex(ValueError, "unique"):
+            USERS["validate_state"](saved)
+
+    def test_default_user_cannot_be_inactive(self):
+        saved = state()
+        saved["users"]["node"]["active"] = False
+        with self.assertRaisesRegex(ValueError, "default"):
+            USERS["validate_state"](saved)
+
     def test_profile_switch_changes_only_the_managed_block(self):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
