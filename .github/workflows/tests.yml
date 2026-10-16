@@ -1,0 +1,40 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: '3.11'
+          - os: macos-15
+            python: '3.11'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.13.1'
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - name: Install the locked development environment
+        run: uv sync --locked
+      - name: Check Python formatting and lint
+        run: make lint
+      - name: Run unit tests
+        run: make test
+      - name: Verify distribution and uv tool installation
+        run: uv run --no-sync python scripts/check_package.py
