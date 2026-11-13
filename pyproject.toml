@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dam"
 version = "0.1.0"
-description = "Persistent Docker workspaces with shared shell profiles"
+description = "Blueprint-driven Docker yards and tmux maps"
 requires-python = ">=3.11"
 dependencies = []
 

@@ -88,7 +88,7 @@ def main():
                     "    )\n"
                 )
             run([installed_python, "-c", code], env=environment, cwd=temporary)
-            configuration = Path(environment["HOME"]) / ".config/dam"
+            configuration = Path(environment["HOME"]) / ".dam"
             if configuration.exists():
                 raise RuntimeError(
                     f"Package verification created configuration: {configuration}"
